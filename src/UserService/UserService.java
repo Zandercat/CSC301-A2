@@ -6,7 +6,6 @@ import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Base64;
 
 public class UserService {
 
@@ -16,6 +15,7 @@ public class UserService {
         public String username;
         public String email;
         public String password;
+        public Map<String, Integer> purchases;
 
         // UserData constructor setting user details
         public UserData(int id, String username, String email, String password) {
@@ -23,6 +23,7 @@ public class UserService {
             this.username = username;
             this.email = email;
             this.password = password;
+            this.purchases = Collections.emptyMap(); //new users have no purchase history
         }
     }
 
@@ -100,7 +101,7 @@ public class UserService {
         String path = requestURI.getPath();
         String[] pathParts = path.split("/");
 
-        // should be 3 parts for GET, localhost / user / USERID
+        // should be 3 parts for basic GET, localhost / user / USERID
         if (pathParts.length == 3 && pathParts[1].equals("user")) {
             try {
                 int userId = Integer.parseInt(pathParts[2]);
@@ -111,6 +112,23 @@ public class UserService {
                     return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", user.id, user.username, user.email, passwordHash);
                 }
                 return "User not found";
+            } catch (NumberFormatException e) {
+                return "Invalid user ID.";
+            }
+        } else if (pathParts.length == 4 && pathParts[1].equals("user") && pathParts[2].equals("purchased")) {
+            try {
+                int userID = Integer.parseInt(pathParts[3]);
+                UserData user = users.get(userID);
+                if (user != null) {
+                    // return purchased information in format
+                    Map<String, Integer> purchases = user.purchases;
+                    String purchaseHistory = "{";
+                    for (Map.Entry<String, Integer> entry : purchases.entrySet()) {
+                        purchaseHistory.concat(String.format("\"%s\": %d, ", entry.getKey(), entry.getValue()));
+                    }
+                    purchaseHistory = purchaseHistory.substring(0, purchaseHistory.length() - 1) + '}';
+                    return purchaseHistory;
+                }
             } catch (NumberFormatException e) {
                 return "Invalid user ID.";
             }
