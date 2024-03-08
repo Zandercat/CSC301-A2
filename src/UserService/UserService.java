@@ -1,3 +1,5 @@
+package src.UserService;
+
 import com.sun.net.httpserver.*;
 import java.io.*;
 import java.net.*;
@@ -6,6 +8,13 @@ import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 
 public class UserService {
 
@@ -52,6 +61,43 @@ public class UserService {
         context.setHandler(UserService::handleRequest);
         server.start();
         System.out.println("Server started on IP " + ip + ", and port " + port + ".");
+
+        // TODO: create table
+        createNewTable();
+        
+    }
+
+    // Create a new table in the test database
+    private static void createNewTable() {
+        String url = "jdbc:sqlite:./compiled/db/data.db";
+        
+        // SQL statement for creating a new table
+        String sql = "CREATE TABLE IF NOT EXISTS users (\n"
+                + "	id integer PRIMARY KEY,\n"
+                + "	username text NOT NULL,\n"
+                + "	email text NOT NULL,\n"
+                + "	password text NOT NULL\n"
+                + ");";
+        try (Connection conn = DriverManager.getConnection(url);
+                Statement stmt = conn.createStatement()) {
+            // create a new table
+            stmt.execute(sql);
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+    }
+
+    // database connection method
+    private static Connection connect() {
+        // postgresql connection string
+        String url = "jdbc:sqlite:./compiled/db/data.db";
+        Connection conn = null;
+        try {
+            conn = DriverManager.getConnection(url);
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return conn;
     }
 
     // handler method for all HTTP requests
@@ -175,7 +221,23 @@ public class UserService {
         users.put(id, new UserData(id, username, email, password));
         // return USER information in format
         String passwordHash = hashPassword(password);
+
         return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", id, username, email, passwordHash);
+
+        /* String sql = "INSERT INTO users(id,username,email,password) VALUES(?,?,?,?)";
+
+        try (Connection conn = connect();
+                PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, id);
+            pstmt.setString(2, username);
+            pstmt.setString(3, email);
+            pstmt.setString(4, passwordHash);
+            pstmt.executeUpdate();
+            return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", id, username, email, passwordHash);
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return "Failed to Insert \n";
+        } */
     }
 
     // method to update user
@@ -193,6 +255,31 @@ public class UserService {
         // return USER information in format
         String passwordHash = hashPassword(user.password);
         return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", id, user.username, user.email, passwordHash);
+
+        /* String username = data.get("username");
+        String email = data.get("email");
+        String password = data.get("password");
+
+        String sql = "UPDATE users SET username = ? , "
+                    + "email = ? , "
+                    + "password = ? "
+                    + "WHERE id = ?";
+
+        try (Connection conn = connect();
+                PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            // set the corresponding param
+            pstmt.setString(1, username);
+            pstmt.setString(2, email);
+            pstmt.setString(3, password);
+            pstmt.setInt(4, id);
+            // update 
+            pstmt.executeUpdate();
+            return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", id, user.username, user.email, passwordHash);
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return "Failed to Update ";
+        } */
     }
 
     // method to delete user only if all details are matched
@@ -208,6 +295,32 @@ public class UserService {
             return "{User deleted successfully}";
         }
         return "User data does not match";
+
+        /* String username = data.get("username");
+        String email = data.get("email");
+        String password = data.get("password");
+
+        String sql = "DELETE FROM users WHERE id = ? "
+                    + "AND username = ? "
+                    + "AND email = ? "
+                    + "AND password = ?";
+
+        try (Connection conn = connect();
+                PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+            // set the corresponding param
+            pstmt.setInt(1, id);
+            pstmt.setString(2, username);
+            pstmt.setString(3, email);
+            pstmt.setString(4, password);
+            // execute the delete statement
+            pstmt.executeUpdate();
+            return "{User deleted successfully}";
+
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return "User data does not match";
+        } */
     }
 
     // ---Helper---
