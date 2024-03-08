@@ -36,9 +36,6 @@ public class UserService {
         }
     }
 
-    // using map to store users, as a simple memory database for A1
-    private static Map<Integer, UserData> users = new HashMap<>();
-
     public static void main(String[] args) throws IOException {
         // use "config.json" as the default config file name
         String configFileName = "config.json";
@@ -151,11 +148,22 @@ public class UserService {
         if (pathParts.length == 3 && pathParts[1].equals("user")) {
             try {
                 int userId = Integer.parseInt(pathParts[2]);
-                UserData user = users.get(userId);
-                if (user != null) {
-                    // return USER information in format
-                    String passwordHash = hashPassword(user.password);
-                    return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", user.id, user.username, user.email, passwordHash);
+                String sql = "SELECT username, email, password FROM users WHERE id = " + Integer.toString(userId);
+                System.out.println(sql);
+                try (Connection conn = connect();
+                    Statement stmt  = conn.createStatement();
+                    ResultSet rs    = stmt.executeQuery(sql)){
+                    
+                    // loop through the result set
+                    while (rs.next()) {
+                        return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", 
+                                             userId, 
+                                             rs.getString("username"), 
+                                             rs.getString("email"), 
+                                             rs.getString("password"));
+                    }
+                } catch (SQLException e) {
+                    System.out.println(e.getMessage());
                 }
                 return "User not found";
             } catch (NumberFormatException e) {
@@ -235,22 +243,12 @@ public class UserService {
     // method to update user
     private static String updateUser(Map<String, String> data) {
         int id = Integer.parseInt(data.get("id"));
-        if (!users.containsKey(id)) {
-            return "User not found";
-        }
-
-        UserData user = users.get(id);
-        if (data.containsKey("username")) user.username = data.get("username");
-        if (data.containsKey("email")) user.email = data.get("email");
-        if (data.containsKey("password")) user.password = data.get("password");
 
         // return USER information in format
-        String passwordHash = hashPassword(user.password);
-        return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", id, user.username, user.email, passwordHash);
-
-        /* String username = data.get("username");
+        String username = data.get("username");
         String email = data.get("email");
         String password = data.get("password");
+        String passwordHash = hashPassword(password);
 
         String sql = "UPDATE users SET username = ? , "
                     + "email = ? , "
@@ -263,34 +261,25 @@ public class UserService {
             // set the corresponding param
             pstmt.setString(1, username);
             pstmt.setString(2, email);
-            pstmt.setString(3, password);
+            pstmt.setString(3, passwordHash);
             pstmt.setInt(4, id);
             // update 
             pstmt.executeUpdate();
-            return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", id, user.username, user.email, passwordHash);
+            return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", id, username, email, passwordHash);
         } catch (SQLException e) {
             System.out.println(e.getMessage());
-            return "Failed to Update ";
-        } */
+            return "User not found";
+        }
     }
 
     // method to delete user only if all details are matched
     private static String deleteUser(Map<String, String> data) {
         int id = Integer.parseInt(data.get("id"));
-        if (!users.containsKey(id)) {
-            return "User not found";
-        }
-        // strict checker to ensure matching
-        UserData user = users.get(id);
-        if (user.username.equals(data.get("username")) && user.email.equals(data.get("email")) && user.password.equals(data.get("password"))) {
-            users.remove(id);
-            return "{User deleted successfully}";
-        }
-        return "User data does not match";
 
-        /* String username = data.get("username");
+        String username = data.get("username");
         String email = data.get("email");
         String password = data.get("password");
+        String passwordHash = hashPassword(password);
 
         String sql = "DELETE FROM users WHERE id = ? "
                     + "AND username = ? "
@@ -304,7 +293,7 @@ public class UserService {
             pstmt.setInt(1, id);
             pstmt.setString(2, username);
             pstmt.setString(3, email);
-            pstmt.setString(4, password);
+            pstmt.setString(4, passwordHash);
             // execute the delete statement
             pstmt.executeUpdate();
             return "{User deleted successfully}";
@@ -312,7 +301,7 @@ public class UserService {
         } catch (SQLException e) {
             System.out.println(e.getMessage());
             return "User data does not match";
-        } */
+        }
     }
 
     // ---Helper---
