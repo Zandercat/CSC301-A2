@@ -210,21 +210,13 @@ public class UserService {
     private static String createUser(Map<String, String> data) {
         int id = Integer.parseInt(data.get("id")); // convert
 
-        if (users.containsKey(id)) {
-            return "User already exists";
-        }
-
         String username = data.get("username");
         String email = data.get("email");
         String password = data.get("password");
-
-        users.put(id, new UserData(id, username, email, password));
         // return USER information in format
         String passwordHash = hashPassword(password);
 
-        return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", id, username, email, passwordHash);
-
-        /* String sql = "INSERT INTO users(id,username,email,password) VALUES(?,?,?,?)";
+        String sql = "INSERT INTO users(id,username,email,password) VALUES(?,?,?,?)";
 
         try (Connection conn = connect();
                 PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -236,8 +228,8 @@ public class UserService {
             return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", id, username, email, passwordHash);
         } catch (SQLException e) {
             System.out.println(e.getMessage());
-            return "Failed to Insert \n";
-        } */
+            return "User already exists";
+        }
     }
 
     // method to update user
