@@ -15,28 +15,47 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import com.google.gson.Gson;
+
 
 public class UserService {
 
-    // class UserData to store data of users, stores id, username, email and password
-    static class UserData {
-        public int id;
-        public String username;
-        public String email;
-        public String password;
-        public Map<String, Integer> purchases;
+    private static Connection connection;
 
-        // UserData constructor setting user details
-        public UserData(int id, String username, String email, String password) {
-            this.id = id;
-            this.username = username;
-            this.email = email;
-            this.password = password;
-            this.purchases = Collections.emptyMap(); //new users have no purchase history
+    private static HttpServer server;
+
+    // Initialize SQLite database connection
+    private static void initializeConnection() throws SQLException {
+        String url = "jdbc:sqlite:./compiled/db/data.db"; 
+        connection = DriverManager.getConnection(url);
+    }
+
+    private static void initializeDatabase() {
+        String createTableSQL = "CREATE TABLE IF NOT EXISTS users ("
+                + "id INTEGER PRIMARY KEY, "
+                + "username TEXT NOT NULL, "
+                + "email TEXT, "
+                + "password TEXT NOT NULL);"; 
+
+        try (Statement statement = connection.createStatement()) {
+            statement.execute(createTableSQL);
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 
     public static void main(String[] args) throws IOException {
+
+        //setup connection
+        try {
+            initializeConnection(); 
+            initializeDatabase();   
+        } catch (SQLException e) {
+            System.out.println("Failed to initialize database connection.");
+            e.printStackTrace();
+            return;
+        }
+
         // use "config.json" as the default config file name
         String configFileName = "config.json";
         // if an argument is provided, use it as the configuration file name
@@ -53,49 +72,14 @@ public class UserService {
         String ip = userServiceConfig.get("ip");
 
         // start server
-        HttpServer server = HttpServer.create(new InetSocketAddress(ip, port), 0);
-        HttpContext context = server.createContext("/user");  // endpoint /user
+        UserService.server = HttpServer.create(new InetSocketAddress(ip, port), 0);
+        HttpContext context = UserService.server.createContext("/user");  // endpoint /user
         context.setHandler(UserService::handleRequest);
-        server.start();
+        UserService.server.start();
         System.out.println("Server started on IP " + ip + ", and port " + port + ".");
-
-        // TODO: create table
-        createNewTable();
         
     }
 
-    // Create a new table in the test database
-    private static void createNewTable() {
-        String url = "jdbc:sqlite:./compiled/db/data.db";
-        
-        // SQL statement for creating a new table
-        String sql = "CREATE TABLE IF NOT EXISTS users (\n"
-                + "	id integer PRIMARY KEY,\n"
-                + "	username text NOT NULL,\n"
-                + "	email text NOT NULL,\n"
-                + "	password text NOT NULL\n"
-                + ");";
-        try (Connection conn = DriverManager.getConnection(url);
-                Statement stmt = conn.createStatement()) {
-            // create a new table
-            stmt.execute(sql);
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
-        }
-    }
-
-    // database connection method
-    private static Connection connect() {
-        // postgresql connection string
-        String url = "jdbc:sqlite:./compiled/db/data.db";
-        Connection conn = null;
-        try {
-            conn = DriverManager.getConnection(url);
-        } catch (SQLException e) {
-            System.out.println(e.getMessage());
-        }
-        return conn;
-    }
 
     // handler method for all HTTP requests
     private static void handleRequest(HttpExchange exchange) throws IOException {
@@ -106,25 +90,24 @@ public class UserService {
         switch (requestMethod) {
             case "GET":
                 response = handleGetRequest(exchange.getRequestURI());
-                if (response.charAt(0) == '{') {
+                if (!response.contains("error")) {
                     responseCode = 200;
                 }
-                if (response == "User not found") {
+                if (response.equals("User not found")) { 
                     responseCode = 404;
                 }
                 break;
-            case "POST":
+                case "POST":
                 response = handlePostRequest(exchange.getRequestBody());
-                if (response == "User already exists") {
+                if (response.equals("Error Placeholder")) {
+                    responseCode = 400;
+                } else if (response.equals("User ID already exists")) {
                     responseCode = 409;
-                }
-                if (response == "User not found") {
+                } else if (response.equals("User not found")) {
                     responseCode = 404;
-                }
-                if (response == "User data does not match") {
+                } else if (response.equals("User data does not match")) {
                     responseCode = 401;
-                }
-                if (response.charAt(0) == '{') {
+                } else {
                     responseCode = 200;
                 }
                 break;
@@ -139,56 +122,40 @@ public class UserService {
         os.close();
     }
 
-    // GET request handler
     private static String handleGetRequest(URI requestURI) {
         String path = requestURI.getPath();
         String[] pathParts = path.split("/");
-
+    
         // should be 3 parts for basic GET, localhost / user / USERID
-        if (pathParts.length == 3 && pathParts[1].equals("user")) {
+        //System.out.println(path);
+        if (pathParts.length == 3 && "user".equals(pathParts[1])) {
             try {
                 int userId = Integer.parseInt(pathParts[2]);
-                String sql = "SELECT username, email, password FROM users WHERE id = " + Integer.toString(userId);
-                System.out.println(sql);
-                try (Connection conn = connect();
-                    Statement stmt  = conn.createStatement();
-                    ResultSet rs    = stmt.executeQuery(sql)){
-                    
-                    // loop through the result set
-                    while (rs.next()) {
-                        return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", 
-                                             userId, 
-                                             rs.getString("username"), 
-                                             rs.getString("email"), 
-                                             rs.getString("password"));
+                String sql = "SELECT username, email, password FROM users WHERE id = ?";
+                try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+                    pstmt.setInt(1, userId);
+                    try (ResultSet rs = pstmt.executeQuery()) {
+                        if (rs.next()) {
+                            return new Gson().toJson(Map.of(
+                                "id", userId,
+                                "username", rs.getString("username"),
+                                "email", rs.getString("email"),
+                                "password", rs.getString("password")
+                            ));
+                        }
+                        return "User not found";
                     }
-                } catch (SQLException e) {
-                    System.out.println(e.getMessage());
                 }
-                return "User not found";
             } catch (NumberFormatException e) {
                 return "Invalid user ID.";
-            }
-        } else if (pathParts.length == 4 && pathParts[1].equals("user") && pathParts[2].equals("purchased")) {
-            try {
-                /* int userID = Integer.parseInt(pathParts[3]);
-                UserData user = users.get(userID);
-                if (user != null) {
-                    // return purchased information in format
-                    Map<String, Integer> purchases = user.purchases;
-                    String purchaseHistory = "{";
-                    for (Map.Entry<String, Integer> entry : purchases.entrySet()) {
-                        purchaseHistory.concat(String.format("\"%s\": %d, ", entry.getKey(), entry.getValue()));
-                    }
-                    purchaseHistory = purchaseHistory.substring(0, purchaseHistory.length() - 1) + '}';
-                    return purchaseHistory;
-                } */
-            } catch (NumberFormatException e) {
-                return "Invalid user ID.";
+            } catch (SQLException e) {
+                System.out.println(e.getMessage());
+                return "Database error.";
             }
         }
-        return "Invalid request."; // invalid request if not according to format
+        return "Invalid request.";
     }
+    
 
     // POST request handler to create, update and delete USER
     private static String handlePostRequest(InputStream requestBody) {
@@ -197,6 +164,13 @@ public class UserService {
             String body = scanner.useDelimiter("\\A").next();
             Map<String, String> data = JSONParser(body);
             // get command in input, otherwise return Invalid
+
+            if ("placeholder".equals(data.get("username")) || 
+        "placeholder".equals(data.get("email")) || 
+        "placeholder".equals(data.get("password"))) {
+            return "Error Placeholder";
+        }
+
             String command = data.get("command");
             switch (command) {
                 case "create":
@@ -205,6 +179,9 @@ public class UserService {
                     return updateUser(data);
                 case "delete":
                     return deleteUser(data);
+                case "shutdown":
+                    UserService.server.stop(0);
+                    System.exit(0);
                 default:
                     return "Invalid command.";
             }
@@ -216,56 +193,59 @@ public class UserService {
     // actual methods to manipulate user data
     // method to create user
     private static String createUser(Map<String, String> data) {
-        int id = Integer.parseInt(data.get("id")); // convert
-
         String username = data.get("username");
         String email = data.get("email");
         String password = data.get("password");
-        // return USER information in format
+        String userIdString = data.get("id");
+        int id = Integer.parseInt(userIdString);
+    
+        if ("placeholder".equals(username) || "placeholder".equals(email) || "placeholder".equals(password) || "placeholder".equals(userIdString)) {
+            return "Error Placeholder";
+        }
+    
+        // Hash the password
         String passwordHash = hashPassword(password);
-
-        String sql = "INSERT INTO users(id,username,email,password) VALUES(?,?,?,?)";
-
-        try (Connection conn = connect();
-                PreparedStatement pstmt = conn.prepareStatement(sql)) {
+    
+        String sql = "INSERT INTO users(id, username, email, password) VALUES(?, ?, ?, ?)";
+    
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setInt(1, id);
             pstmt.setString(2, username);
             pstmt.setString(3, email);
             pstmt.setString(4, passwordHash);
             pstmt.executeUpdate();
-            return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", id, username, email, passwordHash);
+            return new Gson().toJson(Map.of("id", id, "username", username, "email", email, "password", passwordHash));
         } catch (SQLException e) {
             System.out.println(e.getMessage());
             return "User already exists";
         }
     }
+    
 
     // method to update user
     private static String updateUser(Map<String, String> data) {
         int id = Integer.parseInt(data.get("id"));
-
-        // return USER information in format
         String username = data.get("username");
         String email = data.get("email");
         String password = data.get("password");
         String passwordHash = hashPassword(password);
-
-        String sql = "UPDATE users SET username = ? , "
-                    + "email = ? , "
-                    + "password = ? "
-                    + "WHERE id = ?";
-
-        try (Connection conn = connect();
-                PreparedStatement pstmt = conn.prepareStatement(sql)) {
-
-            // set the corresponding param
+    
+        String sql = "UPDATE users SET username = ?, email = ?, password = ? WHERE id = ?";
+    
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setString(1, username);
             pstmt.setString(2, email);
             pstmt.setString(3, passwordHash);
             pstmt.setInt(4, id);
-            // update 
-            pstmt.executeUpdate();
-            return String.format("{\"id\": %d, \"username\": \"%s\", \"email\": \"%s\", \"password\": \"%s\"}", id, username, email, passwordHash);
+            int affected = pstmt.executeUpdate();
+            
+            // Check if any rows were updated
+            if (affected > 0) {
+                return new Gson().toJson(Map.of("id", id, "username", username, "email", email, "password", passwordHash));
+            } else {
+                return "User not found";
+
+            }
         } catch (SQLException e) {
             System.out.println(e.getMessage());
             return "User not found";
@@ -275,34 +255,32 @@ public class UserService {
     // method to delete user only if all details are matched
     private static String deleteUser(Map<String, String> data) {
         int id = Integer.parseInt(data.get("id"));
-
         String username = data.get("username");
         String email = data.get("email");
         String password = data.get("password");
         String passwordHash = hashPassword(password);
-
-        String sql = "DELETE FROM users WHERE id = ? "
-                    + "AND username = ? "
-                    + "AND email = ? "
-                    + "AND password = ?";
-
-        try (Connection conn = connect();
-                PreparedStatement pstmt = conn.prepareStatement(sql)) {
-
-            // set the corresponding param
+    
+        String sql = "DELETE FROM users WHERE id = ? AND username = ? AND email = ? AND password = ?";
+    
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
             pstmt.setInt(1, id);
             pstmt.setString(2, username);
             pstmt.setString(3, email);
             pstmt.setString(4, passwordHash);
-            // execute the delete statement
-            pstmt.executeUpdate();
-            return "{User deleted successfully}";
-
+            int affected = pstmt.executeUpdate();
+    
+            // Check if any rows were deleted
+            if (affected > 0) {
+                return new Gson().toJson(Map.of("message", "User deleted successfully"));
+            } else {
+                return "User data does not match";
+            }
         } catch (SQLException e) {
             System.out.println(e.getMessage());
             return "User data does not match";
         }
     }
+    
 
     // ---Helper---
     // SHA-256 Hasher

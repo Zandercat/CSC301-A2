@@ -30,6 +30,10 @@ public class OrderService {
 
     private static Connection connection;
 
+    private static Boolean isStartingUp = true;
+
+    private static HttpServer server;
+
     //initialize database connection 
     private static void initializeConnection() throws SQLException {
         // Adjust the URL for SQLite
@@ -87,12 +91,12 @@ public class OrderService {
         String ip = userServiceConfig.get("ip");
     
         // Start the server
-        HttpServer server = HttpServer.create(new InetSocketAddress(ip, port), 0);
+        OrderService.server = HttpServer.create(new InetSocketAddress(ip, port), 0);
         // endpoints
-        HttpContext orderContext = server.createContext("/order");
-        HttpContext productContext = server.createContext("/product");
-        HttpContext userContext = server.createContext("/user");
-        HttpContext userPurchasedContext = server.createContext("/user/purchased");
+        HttpContext orderContext = OrderService.server.createContext("/order");
+        HttpContext productContext = OrderService.server.createContext("/product");
+        HttpContext userContext = OrderService.server.createContext("/user");
+        HttpContext userPurchasedContext = OrderService.server.createContext("/user/purchased");
     
         // Set the same handler for all contexts
         orderContext.setHandler(OrderService::handleRequest);
@@ -100,7 +104,7 @@ public class OrderService {
         userContext.setHandler(OrderService::handleRequest);
         userPurchasedContext.setHandler(OrderService::handleRequest);
     
-        server.start();
+        OrderService.server.start();
         System.out.println("Server started on IP " + ip + ", and port " + port + ".");
     }
     
@@ -111,6 +115,38 @@ public class OrderService {
         String[] segments = path.split("/");
         String response = "";
         int responseCode = 200;
+
+        /*if (OrderService.isStartingUp){
+            try (Scanner scanner = new Scanner(exchange.getRequestBody(), StandardCharsets.UTF_8)) {
+                String body = scanner.useDelimiter("\\A").next();
+                Map<String, String> data = JSONParser(body);
+                String command = data.get("command");
+                if (command != "restart"){
+                    System.out.println("Starting from scratch");
+                    try (Statement statement = connection.createStatement()) {
+                        statement.execute("DELETE FROM orders WHERE 1=1");
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                    }
+                    try (Statement statement = connection.createStatement()) {
+                        statement.execute("DELETE FROM users WHERE 1=1");
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                    }
+                    try (Statement statement = connection.createStatement()) {
+                        statement.execute("DELETE FROM products WHERE 1=1");
+                    } catch (SQLException e) {
+                        e.printStackTrace();
+                    }
+                } else {
+                    System.out.println("Restarting...");
+                }
+            } catch (Exception e) {
+                System.out.println("Invalid request command in restart");
+                responseCode = 405;
+            }
+            OrderService.isStartingUp = false;
+        }*/
     
         try {
             // for placing order
@@ -146,6 +182,8 @@ public class OrderService {
         OutputStream os = exchange.getResponseBody();
         os.write(response.getBytes());
         os.close();
+
+        OrderService.isStartingUp = false;
     }
     
     // POST request handler to place Order
@@ -156,6 +194,17 @@ public class OrderService {
             String command = data.get("command");
             if ("place order".equals(command)) {
                 return placeOrder(data);
+            } else if ("shutdown".equals(command)) {
+                //forwardRequestToService(0, "dummy/path/shutdown", requestBody, "POST");
+                //forwardRequestToService(1, "dummy/path/shutdown", requestBody, "POST");
+                OrderService.server.stop(0);
+                System.exit(0);
+                return "Unreachable";
+            } else if ("restart".equals(command)) {
+                if (!OrderService.isStartingUp){
+                    return "Restart must be the first command in a workload.";
+                }
+                return "Restarting...";
             } else {
                 return "Invalid command.";
             }
