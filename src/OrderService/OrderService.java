@@ -1,122 +1,167 @@
-import com.sun.net.httpserver.*;
-import java.io.*;
 import java.net.*;
-import java.util.*;
 import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.Base64;
-import java.util.UUID;
 import java.util.stream.Collectors;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpContext;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.sql.Statement;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.Scanner;
+import com.google.gson.Gson;
+
+
 
 
 public class OrderService {
 
     private static String filename;
 
-    // class OrderData to store data of users, stores id, username, email and password
-    static class OrderData {
-        public UUID order_id;
-        public int user_id;
-        public int product_id;
-        public int quantity;
-      
-        // OrderData constructor setting user details
-        public OrderData(UUID order_id, int user_id, int product_id, int quantity) {
-            this.order_id = order_id;
-            this.user_id = user_id;
-            this.product_id = product_id;
-            this.quantity = quantity;
-        }
+    private static Connection connection;
+
+    //initialize database connection 
+    private static void initializeConnection() throws SQLException {
+        // Adjust the URL for SQLite
+        String url = "jdbc:sqlite:database.db"; 
+        connection = DriverManager.getConnection(url);
     }
 
-    // using map to store orders, as a simple memory database for A1
-    private static Map<UUID, OrderData> orders = new HashMap<>();
+    //initialize database and setup table 
+    private static void initializeDatabase() {
+        String createTableSQL = "CREATE TABLE IF NOT EXISTS Orders (" +
+                                       "order_id INTEGER PRIMARY KEY AUTOINCREMENT,"  +  
+                                       "user_id INT NOT NULL," +
+                                       "product_id INT NOT NULL," +
+                                       "quantity INT NOT NULL," +
+                                       "order_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
+                                       "FOREIGN KEY(user_id) REFERENCES Users(user_id)," +
+                                       "FOREIGN KEY(product_id) REFERENCES Products(product_id))";
+    
+        try (Statement statement = connection.createStatement()) {
+            statement.execute(createTableSQL);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    
 
+    //method to read config file
     public static Map<String, String> readConfigFile( String type) throws IOException {
         String configContent = new String(Files.readAllBytes(Paths.get(filename)), "UTF-8");
         String userServiceConfigContent = extractServiceConfig(configContent, type);
         return JSONParser(userServiceConfigContent);
     }
-
     public static void main(String[] args) throws IOException {
+
+        //setup connection
+        try {
+            initializeConnection(); 
+            initializeDatabase();   
+        } catch (SQLException e) {
+            System.out.println("Failed to initialize database connection.");
+            e.printStackTrace();
+            return;
+        }
+    
         // use "config.json" as the default config file name
         filename = "config.json";
         // if an argument is provided, use it as the configuration file name
         if (args.length > 0) {
             filename = args[0]; // get filename in same path
         }
-
+    
         /// Retrieve port and IP from the config file
         Map<String, String> userServiceConfig = readConfigFile("OrderService");
         int port = Integer.parseInt(userServiceConfig.get("port"));
         String ip = userServiceConfig.get("ip");
-
+    
         // Start the server
         HttpServer server = HttpServer.create(new InetSocketAddress(ip, port), 0);
         // endpoints
         HttpContext orderContext = server.createContext("/order");
         HttpContext productContext = server.createContext("/product");
         HttpContext userContext = server.createContext("/user");
-
+        HttpContext userPurchasedContext = server.createContext("/user/purchased");
+    
+        // Set the same handler for all contexts
         orderContext.setHandler(OrderService::handleRequest);
         productContext.setHandler(OrderService::handleRequest); 
         userContext.setHandler(OrderService::handleRequest);
+        userPurchasedContext.setHandler(OrderService::handleRequest);
+    
         server.start();
         System.out.println("Server started on IP " + ip + ", and port " + port + ".");
     }
-
+    
     // handler method for all HTTP requests
-    public static void handleRequest(HttpExchange exchange) throws IOException {
-        String requestMethod = exchange.getRequestMethod();
+    private static void handleRequest(HttpExchange exchange) throws IOException {
         URI requestURI = exchange.getRequestURI();
         String path = requestURI.getPath();
+        String[] segments = path.split("/");
         String response = "";
         int responseCode = 200;
-        int type = 0;
-
-        if (path.startsWith("/order")) {
-            // handle /order endpoint
-            response = handleOrderRequest(exchange.getRequestBody());
-            if (response.charAt(0) == '{') {
-                responseCode = 200;
+    
+        try {
+            // for placing order
+            if ("POST".equals(exchange.getRequestMethod()) && path.startsWith("/order")) {
+                response = handleOrderRequest(exchange.getRequestBody());
+            } 
+            //  for retrieving user purchases
+            else if ("GET".equals(exchange.getRequestMethod()) && path.startsWith("/user/purchased") && segments.length >= 4) {
+                String userId = segments[3];
+                if (!userExists(Integer.parseInt(userId))) {
+                    responseCode = 404;
+                    response = "User does not exist.";
+                } else {
+                    response = getUserPurchases(Integer.parseInt(userId));
+                }
+            } 
+            
+            else if (path.startsWith("/product") || path.startsWith("/user")) {
+                int type = path.startsWith("/product") ? 0 : 1;
+                response = forwardRequestToService(type, path, exchange.getRequestBody(), exchange.getRequestMethod());
             }
-            if (response == "Invalid"){
+  
+            else {
+                response = "Unsupported endpoint.";
                 responseCode = 404;
             }
-        } else if (path.startsWith("/product")) {
-            // forward /product requests to another service
-            type = 0;
-            response = forwardRequestToService(type, path, exchange.getRequestBody(),exchange.getRequestMethod());
-            if (response == "Placeholder found.") {
-                responseCode = 400;
-            }
-            if (response == "Invalid"){
-                responseCode = 404;
-            }
-        } else if (path.startsWith("/user")) {
-            // forward /users requests to another service
-            type = 1;
-           
-            response = forwardRequestToService(type, path, exchange.getRequestBody(),exchange.getRequestMethod());
-            if (response == "Placeholder found.") {
-                responseCode = 400;
-            }
-            if (response == "Invalid"){
-                responseCode = 404;
-            }
-        } else {
-            response = "Unsupported endpoint.";
-            responseCode = 404;
+        } catch (IOException e) {
+            response = "Internal server error.";
+            responseCode = 500;
         }
-
-        // send response back to client
+    
         exchange.sendResponseHeaders(responseCode, response.getBytes().length);
         OutputStream os = exchange.getResponseBody();
         os.write(response.getBytes());
         os.close();
+    }
+    
+    // POST request handler to place Order
+    private static String handleOrderRequest(InputStream requestBody) {
+        try (Scanner scanner = new Scanner(requestBody, StandardCharsets.UTF_8)) {
+            String body = scanner.useDelimiter("\\A").next();
+            Map<String, String> data = JSONParser(body);
+            String command = data.get("command");
+            if ("place order".equals(command)) {
+                return placeOrder(data);
+            } else {
+                return "Invalid command.";
+            }
+        } catch (Exception e) {
+            return "Invalid";
+        }
     }
 
     // type 1 = User, type 0 = Product
@@ -197,123 +242,110 @@ public class OrderService {
             }
         }
     }
+
+   
+
+    // get the amount purchased by user 
+    private static String getUserPurchases(int userId) {
+        String sql = "SELECT product_id, SUM(quantity) as total_quantity FROM Orders WHERE user_id = ? GROUP BY product_id";
+        Map<Integer, Integer> purchases = new HashMap<>();
+    
+        try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+            pstmt.setInt(1, userId);
+            ResultSet rs = pstmt.executeQuery();
+    
+            while (rs.next()) {
+                int productId = rs.getInt("product_id");
+                int quantity = rs.getInt("total_quantity");
+                purchases.put(productId, quantity);
+            }
+        } catch (SQLException e) {
+            System.out.println("Error fetching user purchases: " + e.getMessage());
+            return new Gson().toJson(new HashMap<>()); // Return an empty JSON object in case of SQL exception.
+        }
+    
+        return new Gson().toJson(purchases);
+    }
+    
     
 
-    // POST request handler to place Order, to be expanded on for a2
-    private static String handleOrderRequest(InputStream requestBody) {
-        try (Scanner scanner = new Scanner(requestBody, "UTF-8")) {
-            // read the entire input stream into a single string
-            String body = scanner.useDelimiter("\\A").next();
-            Map<String, String> data = JSONParser(body);
-            // get command in input, otherwise return Invalid
-            String command = data.get("command");
-            switch (command) {
-                case "place order":
-                    return placeOrder(data);
-                default:
-                    return "Invalid command.";
-            }
-        } catch (Exception e) {
-            return "Invalid";
-        }
+
+
+    private static boolean userExists(int user_id) {
+    String sql = "SELECT id FROM Users WHERE id = ?";
+    try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+        pstmt.setInt(1, user_id);
+        ResultSet rs = pstmt.executeQuery();
+        return rs.next();
+    } catch (SQLException e) {
+        System.out.println("Error checking user existence: " + e.getMessage());
+        return false;
+    }
+}
+
+private static boolean product_checker(int product_id, int requestedQuantity) {
+    String updateSql = "UPDATE Products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?";
+
+    try (PreparedStatement updateStmt = connection.prepareStatement(updateSql)) {
+        updateStmt.setInt(1, requestedQuantity);
+        updateStmt.setInt(2, product_id);
+        updateStmt.setInt(3, requestedQuantity);
+        int affectedRows = updateStmt.executeUpdate();
+        return affectedRows > 0;
+    } catch (SQLException e) {
+        System.out.println("Error updating product quantity: " + e.getMessage());
+        return false;
+    }
+}
+
+
+private static String placeOrder(Map<String, String> data) {
+    int product_id = Integer.parseInt(data.get("product_id"));
+    int user_id = Integer.parseInt(data.get("user_id"));
+    int requestedQuantity = Integer.parseInt(data.get("quantity"));
+
+    System.out.println("Processing order for user_id: " + user_id);
+
+
+    if (!userExists(user_id)) {
+        return "User does not exist.";
     }
 
-    // actual methods to manipulate data
-    // method to create user
-    // GET request: analyze quantity, analyze User, then POST request
-    private static String placeOrder(Map<String, String> data) {
-        int product_id = Integer.parseInt(data.get("product_id"));
-        for (String value : data.values()) {
-            if (value instanceof String && ((String) value).equals("placeholder")) {
-                return "Placeholder found.";
-            }
-        }
-
-        // declare userConfig here
-        Map<String, String> userConfig;
-        try {
-            userConfig = readConfigFile("UserService");
-        } catch (IOException e) {
-            return "Error reading service configuration: " + e.getMessage();
-        }
-
-        int port = Integer.parseInt(userConfig.get("port"));
-        String ip = userConfig.get("ip");
-        String targetUrl = "http://" + ip + ":" + port + "/user";
-        int user_id = Integer.parseInt(data.get("user_id"));
-        int requestedQuantity = Integer.parseInt(data.get("quantity"));
-        // Generate a random UUID for the order ID
-        UUID order_id = UUID.randomUUID();
-
-        // check if User exists
-        String userResponse;
-        try {
-            userResponse = sendGetRequest(targetUrl + '/' + user_id);
-        } catch (IOException e) {
-            orders.put(order_id, new OrderData(order_id, product_id, user_id, requestedQuantity));
-            return String.format("{\"id\": \"%s\", \"product_id\": %d, \"user_id\": %d, \"quantity\": %d, \"status\": \"Invalid Request\"}", order_id.toString(), product_id, user_id, requestedQuantity);
-        }
-
-        // Declare serviceConfig here
-        Map<String, String> serviceConfig;
-        try {
-            serviceConfig = readConfigFile("ProductService");
-        } catch (IOException e) {
-            return "Error reading service configuration: " + e.getMessage();
-        }
-
-        port = Integer.parseInt(serviceConfig.get("port"));
-        ip = serviceConfig.get("ip");
-        targetUrl = "http://" + ip + ":" + port + "/product";
-
-        String productResponse;
-        try {
-            productResponse = sendGetRequest(targetUrl + '/' + product_id);
-        } catch (IOException e) {
-            return "Error sending GET request: " + e.getMessage();
-        }
-        Map<String, String> productData = JSONParser(productResponse);
-        int availableQuantity = Integer.parseInt((String) productData.get("quantity"));
-
-        // Check if requested quantity is available
-        if (requestedQuantity > availableQuantity) {
-            // Process the order
-            orders.put(order_id, new OrderData(order_id, product_id, user_id, requestedQuantity));
-            return String.format("{\"id\": \"%s\", \"product_id\": %d, \"user_id\": %d, \"quantity\": %d, \"status\": \"Exceeded quantity limit\"}", order_id.toString(), product_id, user_id, requestedQuantity);
-        }
-        int quantity = availableQuantity - requestedQuantity;
-        int id = Integer.parseInt((String) productData.get("id"));
-        String name = productData.get("name");
-        String description = productData.get("description");
-        double price = Double.valueOf((String) productData.get("price"));
-        
-        // POST Request
-        String postResponse;
-
-        // create the JSON string using String.format
-        String jsonInputString = String.format("{\"command\": \"update\", \"id\": %d, \"name\": \"%s\", \"description\": \"%s\", \"price\": %.2f, \"quantity\": %d}", id, name, description, price, quantity);
-        try {
-            postResponse = sendPostRequest(targetUrl, jsonInputString);
-        } catch (IOException e) {
-            return "Error sending POST request: " + e.getMessage();
-        }
-
-        // process the order
-        orders.put(order_id, new OrderData(order_id, product_id, user_id, requestedQuantity));
-        return String.format("{\"id\": \"%s\", \"product_id\": %d, \"user_id\": %d, \"quantity\": %d, \"status\": \"Success\"}", order_id.toString(), product_id, user_id, requestedQuantity);
+    if (!product_checker(product_id, requestedQuantity)) {
+        return "Product amount not enough";
     }
+
+    String sql = "INSERT INTO Orders(user_id, product_id, quantity) VALUES(?,?,?)";
+    try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
+        pstmt.setInt(1, user_id);
+        pstmt.setInt(2, product_id);
+        pstmt.setInt(3, requestedQuantity);
+        int affectedRows = pstmt.executeUpdate();
+
+        if (affectedRows == 0) {
+            return "Failed to insert order: No rows affected.";
+        } else {
+            return "{\"status\": \"Success\"}";
+        }
+    } catch (SQLException e) {
+        e.printStackTrace();
+        return "Error inserting order: " + e.getMessage();
+    }
+}
+
+
 
     // ---Helper---
     private static String sendGetRequest(String urlString) throws IOException {
         URL url = new URL(urlString);
         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
         connection.setRequestMethod("GET");
-
+    
         int responseCode = connection.getResponseCode();
         if (responseCode != HttpURLConnection.HTTP_OK) {
-            throw new IOException("User Does not Exist.");
+            throw new IOException("Received HTTP " + responseCode + " from " + urlString);
         }
-
+    
         StringBuilder response = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
@@ -325,35 +357,9 @@ public class OrderService {
         }
         return response.toString();
     }
+    
 
-    private static String sendPostRequest(String urlString, String jsonInputString) throws IOException {
-        URL url = new URL(urlString);
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-        connection.setRequestMethod("POST");
-        connection.setRequestProperty("Content-Type", "application/json");
-        connection.setDoOutput(true);
 
-        // Send the request body
-        try (OutputStream os = connection.getOutputStream()) {
-            byte[] input = jsonInputString.getBytes(StandardCharsets.UTF_8);
-            os.write(input, 0, input.length);
-        }
-
-        // Read the response
-        int responseCode = connection.getResponseCode();
-        StringBuilder response = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                (responseCode < HttpURLConnection.HTTP_BAD_REQUEST) ? connection.getInputStream() : connection.getErrorStream(),
-                StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                response.append(line);
-            }
-        } finally {
-            connection.disconnect();
-        }
-        return response.toString();
-    }
 
     // method to parse JSON data from str
     private static Map<String, String> JSONParser(String json) {
