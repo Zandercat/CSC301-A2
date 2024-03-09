@@ -1,55 +1,82 @@
+package src.ProductService;
+
 import com.sun.net.httpserver.*;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.util.*;
+
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.text.ParseException;
 
 public class ProductService {
 
-    // class ProductData to store products
-    static class ProductData {
-        public int id;
-        public String name;
-        public String description;
-        public double price;
-        public int quantity;
+    public static void main(String[] args) throws IOException {
+        try {
+            // use "config.json" as the default config file name
+            String configFileName = "config.json";
+            // if an argument is provided, use it as the configuration file name
+            if (args.length > 0) {
+                configFileName = args[0]; // get filename in same path
+            }
 
-        // ProductData constructor
-        public ProductData(int id, String name, String description, double price, int quantity) {
-            this.id = id;
-            this.name = name;
-            this.description = description;
-            this.price = price;
-            this.quantity = quantity;
+            // parse JSON to Map in helper
+            String configContent = new String(Files.readAllBytes(Paths.get(configFileName)), "UTF-8");
+            String productServiceConfigContent = extractServiceConfig(configContent, "ProductService");
+            Map<String, String> productServiceConfig = JSONParser(productServiceConfigContent);
+            // get server port and IP from config.json
+            int port = Integer.parseInt(productServiceConfig.get("port"));
+            String ip = productServiceConfig.get("ip");
+
+            createNewTable();
+
+            // start server
+            HttpServer server = HttpServer.create(new InetSocketAddress(ip, port), 0);
+            HttpContext context = server.createContext("/product");  // endpoint /product
+            context.setHandler(ProductService::handleRequest);
+            server.start();
+            System.out.println("Server started on IP " + ip + ", and port " + port + ".");
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 
-    // using map to store products, as a simple memory database for A1
-    private static Map<Integer, ProductData> products = new HashMap<>();
-
-    public static void main(String[] args) throws IOException {
-        // use "config.json" as the default config file name
-        String configFileName = "config.json";
-        // if an argument is provided, use it as the configuration file name
-        if (args.length > 0) {
-            configFileName = args[0]; // get filename in same path
+    private static void createNewTable() {
+        String url = "jdbc:sqlite:./compiled/db/data.db";
+        
+        // SQL statement for creating a new table
+        String sql = "CREATE TABLE IF NOT EXISTS products (\n"
+                + "	id integer PRIMARY KEY,\n"
+                + "	productname text NOT NULL,\n"
+                + "	description text NOT NULL,\n"
+                + "	price real NOT NULL,\n"
+                + "	quantity integer NOT NULL\n"
+                + ");";
+        try (Connection conn = DriverManager.getConnection(url);
+                Statement stmt = conn.createStatement()) {
+            // create a new table
+            stmt.execute(sql);
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
         }
+    }
 
-        // parse JSON to Map in helper
-        String configContent = new String(Files.readAllBytes(Paths.get(configFileName)), "UTF-8");
-        String productServiceConfigContent = extractServiceConfig(configContent, "ProductService");
-        Map<String, String> productServiceConfig = JSONParser(productServiceConfigContent);
-        // get server port and IP from config.json
-        int port = Integer.parseInt(productServiceConfig.get("port"));
-        String ip = productServiceConfig.get("ip");
-
-        // start server
-        HttpServer server = HttpServer.create(new InetSocketAddress(ip, port), 0);
-        HttpContext context = server.createContext("/product");  // endpoint /product
-        context.setHandler(ProductService::handleRequest);
-        server.start();
-        System.out.println("Server started on IP " + ip + ", and port " + port + ".");
+    private static Connection connect() {
+        // SQLite connection string
+        String url = "jdbc:sqlite:./compiled/db/data.db";
+        Connection conn = null;
+        try {
+            conn = DriverManager.getConnection(url);
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+        }
+        return conn;
     }
 
     // handler method for all HTTP requests
@@ -97,6 +124,8 @@ public class ProductService {
         os.close();
     }
 
+    //return String.format("{\"id\": %d, \"name\": \"%s\", \"description\": \"%s\", \"price\": %.2f, \"quantity\": %d}", product.id, product.name, product.description, product.price, product.quantity);
+
     // GET request handler
     private static String handleGetRequest(URI requestURI) {
         String path = requestURI.getPath();
@@ -106,10 +135,23 @@ public class ProductService {
         if (pathParts.length == 3 && pathParts[1].equals("product")) {
             try {
                 int productId = Integer.parseInt(pathParts[2]);
-                ProductData product = products.get(productId);
-                if (product != null) {
-                    // return PRODUCT information in format
-                    return String.format("{\"id\": %d, \"name\": \"%s\", \"description\": \"%s\", \"price\": %.2f, \"quantity\": %d}", product.id, product.name, product.description, product.price, product.quantity);
+                String sql = "SELECT productname, description, price, quantity FROM products WHERE id = " + Integer.toString(productId);
+                System.out.println(sql);
+                try (Connection conn = connect();
+                    Statement stmt  = conn.createStatement();
+                    ResultSet rs    = stmt.executeQuery(sql)){
+                    
+                    // loop through the result set
+                    while (rs.next()) {
+                        return String.format("{\"id\": %d, \"productname\": \"%s\", \"description\": \"%s\", \"price\": %.2f, \"quantity\": %d}", 
+                                             productId, 
+                                             rs.getString("productname"), 
+                                             rs.getString("description"), 
+                                             rs.getFloat("price"),
+                                             rs.getInt("quantity"));
+                    }
+                } catch (SQLException e) {
+                    System.out.println(e.getMessage());
                 }
                 return "Product not found";
             } catch (NumberFormatException e) {
@@ -148,11 +190,7 @@ public class ProductService {
     private static String createProduct(Map<String, String> data) {
         int id = Integer.parseInt(data.get("id")); // convert
 
-        if (products.containsKey(id)) {
-            return "Product already exists";
-        }
-
-        String name = data.get("name");
+        String productname = data.get("productname");
         String description = data.get("description");
         double price = Double.parseDouble(data.get("price"));
         int quantity = Integer.parseInt(data.get("quantity"));
@@ -160,42 +198,86 @@ public class ProductService {
             return "Price and quantity must be positive";
         }
 
-        products.put(id, new ProductData(id, name, description, price, quantity));
-        // return PRODUCT information in format
-        return String.format("{\"id\": %d, \"name\": \"%s\", \"description\": \"%s\", \"price\": %.2f, \"quantity\": %d}", id, name, description, price, quantity);
+        String sql = "INSERT INTO products(id,productname,description,price,quantity) VALUES(?,?,?,?,?)";
+
+        try (Connection conn = connect();
+                PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, id);
+            pstmt.setString(2, productname);
+            pstmt.setString(3, description);
+            pstmt.setDouble(4, price);
+            pstmt.setInt(5, quantity);
+            pstmt.executeUpdate();
+            return String.format("{\"id\": %d, \"productname\": \"%s\", \"description\": \"%s\", \"price\": %.2f, \"quantity\": %d}", id, productname, description, price, quantity);
+        } catch (SQLException e) {
+            System.out.println(e.getMessage());
+            return "Product already exists";
+        }
     }
 
     // method to update product
     private static String updateProduct(Map<String, String> data) {
-        int id = Integer.parseInt(data.get("id"));
-        if (!products.containsKey(id)) {
-            return "Product not found";
+        int id = Integer.parseInt(data.get("id")); // convert
+
+        String productname = data.get("productname");
+        String description = data.get("description");
+        double price = Double.parseDouble(data.get("price"));
+        int quantity = Integer.parseInt(data.get("quantity"));
+        if (price < 0 || quantity < 0) {
+            return "Price and quantity must be positive";
         }
+        
+        String sql = "UPDATE products SET productname = ? , "
+                    + "description = ? , "
+                    + "price = ? , "
+                    + "quantity = ? "
+                    + "WHERE id = ?";
 
-        ProductData product = products.get(id);
-        if (data.containsKey("name")) product.name = data.get("name");
-        if (data.containsKey("description")) product.description = data.get("description");
-        if (data.containsKey("price")) product.price = Double.parseDouble(data.get("price"));
-        if (data.containsKey("quantity")) product.quantity = Integer.parseInt(data.get("quantity"));
+                    try (Connection conn = connect();
+                    PreparedStatement pstmt = conn.prepareStatement(sql)) {
 
-        // return PRODUCT information in format
-        return String.format("{\"id\": %d, \"name\": \"%s\", \"description\": \"%s\", \"price\": %.2f, \"quantity\": %d}", id, product.name, product.description, product.price, product.quantity);
+                // set the corresponding param
+                pstmt.setString(1, productname);
+                pstmt.setString(2, description);
+                pstmt.setDouble(3, price);
+                pstmt.setInt(4, quantity);
+                pstmt.setInt(5, id);
+                // update 
+                pstmt.executeUpdate();
+                return String.format("{\"id\": %d, \"productname\": \"%s\", \"description\": \"%s\", \"price\": %.2f, \"quantity\": %d}", id, productname, description, price, quantity);
+            } catch (SQLException e) {
+                System.out.println(e.getMessage());
+                return "Product already exists";
+            }
     }
 
     // method to delete product only if all info are matched
     private static String deleteProduct(Map<String, String> data) {
         int id = Integer.parseInt(data.get("id"));
-        if (!products.containsKey(id)) {
-            return "Product not found";
-        }
+        String productname = data.get("productname");
+        double price = Double.parseDouble(data.get("price"));
+        int quantity = Integer.parseInt(data.get("quantity"));
 
-        // strict checker to ensure matching
-        ProductData product = products.get(id);
-        if (product.name.equals(data.get("name")) && product.price == Double.valueOf(data.get("price")) && String.valueOf(product.quantity).equals(data.get("quantity"))) {
-            products.remove(id);
-            return "{Product deleted successfully}";
-        }
-        return "Product info does not match";
+        String sql = "DELETE FROM products WHERE id = ? "
+                        + "AND productname = ? "
+                        + "AND price = ? "
+                        + "AND quantity = ?";
+
+            try (Connection conn = connect();
+                    PreparedStatement pstmt = conn.prepareStatement(sql)) {
+
+                // set the corresponding param
+                pstmt.setInt(1, id);
+                pstmt.setString(2, productname);
+                pstmt.setDouble(3, price);
+                pstmt.setInt(4, quantity);
+                // execute the delete statement
+                pstmt.executeUpdate();
+                return "{Product deleted successfully}";
+            } catch (SQLException e) {
+                System.out.println(e.getMessage());
+                return "Product info does not match";
+            }
     }
 
     // ---Helper---
