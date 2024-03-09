@@ -34,8 +34,6 @@ compile() {
     javac -cp './compiled/jarFiles/*:./src/UserService' -d './compiled/UserService' ./src/UserService/UserService.java
     javac -cp './compiled/jarFiles/*:./src/OrderService' -d './compiled/OrderService' ./src/OrderService/OrderService.java
     javac -cp './compiled/jarFiles/*:./src/ProductService' -d './compiled/ProductService' ./src/ProductService/ProductService.java
-    echo "Downloading JAR files..."
-    wget -P ./compiled/jarFiles/ https://repo1.maven.org/maven2/org/xerial/sqlite-jdbc/3.45.0.0/sqlite-jdbc-3.45.0.0.jar
 }
 
 start_user_service() {
