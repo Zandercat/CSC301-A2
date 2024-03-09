@@ -180,6 +180,9 @@ public class UserService {
                 case "delete":
                     return deleteUser(data);
                 case "shutdown":
+                    return new Gson().toJson(Map.of(
+                        "command", "shutdown"
+                    ));
                     UserService.server.stop(0);
                     System.exit(0);
                 default:
