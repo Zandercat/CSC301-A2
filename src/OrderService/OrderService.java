@@ -148,6 +148,7 @@ public class OrderService {
         os.close();
     }
     
+    
     // POST request handler to place Order
     private static String handleOrderRequest(InputStream requestBody) {
         try (Scanner scanner = new Scanner(requestBody, StandardCharsets.UTF_8)) {
@@ -195,7 +196,7 @@ public class OrderService {
             // Convert InputStream requestBody to String
             String body = new BufferedReader(new InputStreamReader(requestBody))
                             .lines().collect(Collectors.joining("\n"));
-            System.out.println("Sending " + method + " request to: " + targetUrl + " with body: " + body);
+            //System.out.println("Sending " + method + " request to: " + targetUrl + " with body: " + body);
     
             // Create URL and open connection
             URL url = new URL(targetUrl);
@@ -229,7 +230,7 @@ public class OrderService {
             }
     
             System.out.println("Response Code: " + responseCode);
-            System.out.println("Response Message: " + response.toString());
+            //System.out.println("Response Message: " + response.toString());
     
             return response.toString();
     
@@ -308,11 +309,11 @@ private static String placeOrder(Map<String, String> data) {
 
 
     if (!userExists(user_id)) {
-        return "User does not exist.";
+        return new Gson().toJson(Map.of("error", "User does not exist."));
     }
 
     if (!product_checker(product_id, requestedQuantity)) {
-        return "Product amount not enough";
+        return new Gson().toJson(Map.of("error", "Product amount not enough"));
     }
 
     String sql = "INSERT INTO Orders(user_id, product_id, quantity) VALUES(?,?,?)";
@@ -323,13 +324,13 @@ private static String placeOrder(Map<String, String> data) {
         int affectedRows = pstmt.executeUpdate();
 
         if (affectedRows == 0) {
-            return "Failed to insert order: No rows affected.";
+            return new Gson().toJson(Map.of("error", "Failed to insert order: No rows affected."));
         } else {
-            return "{\"status\": \"Success\"}";
+            return new Gson().toJson(Map.of("status", "Success"));
         }
+
     } catch (SQLException e) {
-        e.printStackTrace();
-        return "Error inserting order: " + e.getMessage();
+        return new Gson().toJson(Map.of("error", "Error inserting order: " + e.getMessage()));
     }
 }
 
