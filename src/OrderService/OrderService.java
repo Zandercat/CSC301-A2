@@ -260,8 +260,7 @@ public class OrderService {
                 purchases.put(productId, quantity);
             }
         } catch (SQLException e) {
-            System.out.println("Error fetching user purchases: " + e.getMessage());
-            return new Gson().toJson(new HashMap<>()); // Return an empty JSON object in case of SQL exception.
+            return new Gson().toJson(Map.of("error", "Error fetching user purchases: " + e.getMessage()));
         }
     
         return new Gson().toJson(purchases);
@@ -309,7 +308,7 @@ private static String placeOrder(Map<String, String> data) {
 
 
     if (!userExists(user_id)) {
-        return "User does not exist.";
+        return new Gson().toJson(Map.of("error", "Product amount not enough"));
     }
 
     if (!product_checker(product_id, requestedQuantity)) {
@@ -324,13 +323,12 @@ private static String placeOrder(Map<String, String> data) {
         int affectedRows = pstmt.executeUpdate();
 
         if (affectedRows == 0) {
-            return "Failed to insert order: No rows affected.";
+            return new Gson().toJson(Map.of("error", "Failed to insert order: No rows affected."));
         } else {
-            return "{\"status\": \"Success\"}";
+            return new Gson().toJson(Map.of("status", "Success"));
         }
     } catch (SQLException e) {
-        e.printStackTrace();
-        return "Error inserting order: " + e.getMessage();
+        return new Gson().toJson(Map.of("error", "Error inserting order: " + e.getMessage()));
     }
 }
 
