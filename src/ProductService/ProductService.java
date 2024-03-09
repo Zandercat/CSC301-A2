@@ -15,6 +15,8 @@ import java.sql.ResultSet;
 import java.sql.Statement;
 import java.text.ParseException;
 
+import com.google.gson.Gson;
+
 public class ProductService {
 
     public static void main(String[] args) throws IOException {
