@@ -97,6 +97,9 @@ public class ProductService {
                 break;
             case "POST":
                 response = handlePostRequest(exchange.getRequestBody());
+                if (response.equals("Error Placeholder")) {
+                    responseCode = 400;
+                }
                 if (response == "Product already exists") {
                     responseCode = 409;
                 }
@@ -143,23 +146,24 @@ public class ProductService {
                     
                     // loop through the result set
                     while (rs.next()) {
-                        return String.format("{\"id\": %d, \"productname\": \"%s\", \"description\": \"%s\", \"price\": %.2f, \"quantity\": %d}", 
-                                             productId, 
-                                             rs.getString("productname"), 
-                                             rs.getString("description"), 
-                                             rs.getFloat("price"),
-                                             rs.getInt("quantity"));
+                        return new Gson().toJson(Map.of(
+                                "id", productId,
+                                "productname", rs.getString("productname"),
+                                "description", rs.getString("description"),
+                                "price", rs.getString("price"),
+                                "quantity", rs.getInt("quantity")
+                            ));
                     }
                 } catch (SQLException e) {
                     System.out.println(e.getMessage());
                 }
-                return "Product not found";
+                return new Gson().toJson(Map.of("error", "Product not found"));
             } catch (NumberFormatException e) {
-                return "Invalid product ID";
+                return new Gson().toJson(Map.of("error", "Invalid product ID"));
             }
         }
 
-        return "Invalid request";
+        return new Gson().toJson(Map.of("error", "Invalid request"));
     }
 
     // POST request handler to create, update and delete PRODUCT
@@ -178,10 +182,10 @@ public class ProductService {
                 case "delete":
                     return deleteProduct(data);
                 default:
-                    return "Invalid command.";
+                    return new Gson().toJson(Map.of("error", "Invalid command"));
             }
         } catch (Exception e) {
-            return "Invalid request.";
+            return new Gson().toJson(Map.of("error", "Invalid request."));
         }
     }
 
@@ -195,7 +199,7 @@ public class ProductService {
         double price = Double.parseDouble(data.get("price"));
         int quantity = Integer.parseInt(data.get("quantity"));
         if (price < 0 || quantity < 0) {
-            return "Price and quantity must be positive";
+            return new Gson().toJson(Map.of("error", "Price and quantity must be positive"));
         }
 
         String sql = "INSERT INTO products(id,productname,description,price,quantity) VALUES(?,?,?,?,?)";
@@ -208,10 +212,16 @@ public class ProductService {
             pstmt.setDouble(4, price);
             pstmt.setInt(5, quantity);
             pstmt.executeUpdate();
-            return String.format("{\"id\": %d, \"productname\": \"%s\", \"description\": \"%s\", \"price\": %.2f, \"quantity\": %d}", id, productname, description, price, quantity);
+            return new Gson().toJson(Map.of(
+                                "id", id,
+                                "productname", productname,
+                                "description", description,
+                                "price", price,
+                                "quantity", quantity
+                            ));
         } catch (SQLException e) {
             System.out.println(e.getMessage());
-            return "Product already exists";
+            return new Gson().toJson(Map.of("error", "Product already exists"));
         }
     }
 
@@ -224,7 +234,7 @@ public class ProductService {
         double price = Double.parseDouble(data.get("price"));
         int quantity = Integer.parseInt(data.get("quantity"));
         if (price < 0 || quantity < 0) {
-            return "Price and quantity must be positive";
+            return new Gson().toJson(Map.of("error", "Price and quantity must be positive"));
         }
         
         String sql = "UPDATE products SET productname = ? , "
@@ -244,10 +254,16 @@ public class ProductService {
                 pstmt.setInt(5, id);
                 // update 
                 pstmt.executeUpdate();
-                return String.format("{\"id\": %d, \"productname\": \"%s\", \"description\": \"%s\", \"price\": %.2f, \"quantity\": %d}", id, productname, description, price, quantity);
+                return new Gson().toJson(Map.of(
+                                "id", id,
+                                "productname", productname,
+                                "description", description,
+                                "price", price,
+                                "quantity", quantity
+                            ));
             } catch (SQLException e) {
                 System.out.println(e.getMessage());
-                return "Product already exists";
+                return new Gson().toJson(Map.of("error", "Product already exists"));
             }
     }
 
@@ -273,10 +289,10 @@ public class ProductService {
                 pstmt.setInt(4, quantity);
                 // execute the delete statement
                 pstmt.executeUpdate();
-                return "{Product deleted successfully}";
+                return new Gson().toJson(Map.of("success", "Product deleted successfully"));
             } catch (SQLException e) {
                 System.out.println(e.getMessage());
-                return "Product info does not match";
+                return new Gson().toJson(Map.of("error", "Product info does not match"));
             }
     }
 
