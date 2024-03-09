@@ -171,7 +171,7 @@ public class UserService {
             }
         } else if (pathParts.length == 4 && pathParts[1].equals("user") && pathParts[2].equals("purchased")) {
             try {
-                int userID = Integer.parseInt(pathParts[3]);
+                /* int userID = Integer.parseInt(pathParts[3]);
                 UserData user = users.get(userID);
                 if (user != null) {
                     // return purchased information in format
@@ -182,7 +182,7 @@ public class UserService {
                     }
                     purchaseHistory = purchaseHistory.substring(0, purchaseHistory.length() - 1) + '}';
                     return purchaseHistory;
-                }
+                } */
             } catch (NumberFormatException e) {
                 return "Invalid user ID.";
             }
