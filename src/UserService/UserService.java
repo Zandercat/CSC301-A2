@@ -24,6 +24,8 @@ public class UserService {
 
     private static HttpServer server;
 
+    private static Boolean isStartingUp = true;
+
     // Initialize SQLite database connection
     private static void initializeConnection() throws SQLException {
         String url = "jdbc:sqlite:./compiled/db/data.db"; 
@@ -85,6 +87,7 @@ public class UserService {
     private static void handleRequest(HttpExchange exchange) throws IOException {
         String requestMethod = exchange.getRequestMethod();
         String response = "";
+        Boolean shutdown = false;
         int responseCode = 200;
         // determine request type and pass to handler
         switch (requestMethod) {
@@ -107,6 +110,21 @@ public class UserService {
                     responseCode = 404;
                 } else if (response.equals("User data does not match")) {
                     responseCode = 401;
+                } else if (response.equals("command:shutdown")) {
+                    responseCode = 200;
+                    response = new Gson().toJson(Map.of("command", "shutdown"));
+                    shutdown = true;
+                } else if (response.equals("command:restart")) {
+                    if (isStartingUp) {
+                        System.out.println("restarting");
+                        responseCode = 200;
+                        response = new Gson().toJson(Map.of("command", "restart"));
+                        isStartingUp = false;
+                    } else {
+                        responseCode = 405;
+                        response = "Invalid request command in restart";
+                    }
+                    
                 } else {
                     responseCode = 200;
                 }
@@ -120,6 +138,12 @@ public class UserService {
         OutputStream os = exchange.getResponseBody();
         os.write(response.getBytes());
         os.close();
+
+        if (shutdown) {
+            UserService.server.stop(0);
+            System.exit(0);
+        }
+
     }
 
     private static String handleGetRequest(URI requestURI) {
@@ -166,12 +190,23 @@ public class UserService {
             // get command in input, otherwise return Invalid
 
             if ("placeholder".equals(data.get("username")) || 
-        "placeholder".equals(data.get("email")) || 
-        "placeholder".equals(data.get("password"))) {
+                "placeholder".equals(data.get("email")) || 
+                "placeholder".equals(data.get("password"))) {
             return "Error Placeholder";
-        }
+            }
+
+            System.out.println(body);
 
             String command = data.get("command");
+            if (!command.equals("restart") && isStartingUp) {
+                System.out.println("Starting from scratch");
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("DELETE FROM users WHERE 1=1");
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
+
             switch (command) {
                 case "create":
                     return createUser(data);
@@ -180,17 +215,17 @@ public class UserService {
                 case "delete":
                     return deleteUser(data);
                 case "shutdown":
-                    return new Gson().toJson(Map.of(
-                        "command", "shutdown"
-                    ));
-                    UserService.server.stop(0);
-                    System.exit(0);
+                    return "command:shutdown";
+                case "restart":
+                    return "command:restart";
                 default:
                     return "Invalid command.";
             }
         } catch (Exception e) {
             return "Invalid request.";
         }
+
+        
     }
 
     // actual methods to manipulate user data

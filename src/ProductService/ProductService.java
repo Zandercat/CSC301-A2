@@ -6,22 +6,25 @@ import com.sun.net.httpserver.*;
 
 import java.io.*;
 import java.net.*;
-import java.nio.charset.StandardCharsets;
+import java.util.*;
 import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.SQLException;
-import java.util.*;
-
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
-import java.text.ParseException;
 import com.google.gson.Gson;
 
 public class ProductService {
 
     private static HttpServer server;
+
+    private static Boolean isStartingUp = true;
 
     public static void main(String[] args) throws IOException {
         try {
@@ -89,6 +92,7 @@ public class ProductService {
     private static void handleRequest(HttpExchange exchange) throws IOException {
         String requestMethod = exchange.getRequestMethod();
         String response = "";
+        Boolean shutdown = false;
         int responseCode = 200;
         // determine request type and pass to handler
         switch (requestMethod) {
@@ -106,19 +110,34 @@ public class ProductService {
                 if (response.equals("Error Placeholder")) {
                     responseCode = 400;
                 }
-                if (response == "Product already exists") {
+                else if (response == "Product already exists") {
                     responseCode = 409;
                 }
-                if (response == "Price and quantity must be positive") {
+                else if (response == "Price and quantity must be positive") {
                     responseCode = 400;
                 }
-                if (response == "Product not found") {
+                else if (response == "Product not found") {
                     responseCode = 404;
                 }
-                if (response == "Product info does not match") {
+                else if (response == "Product info does not match") {
                     responseCode = 404;
                 }
-                if (response.charAt(0) == '{') {
+                else if (response.equals("command:shutdown")) {
+                    responseCode = 200;
+                    response = new Gson().toJson(Map.of("command", "shutdown"));
+                    shutdown = true;
+                } else if (response.equals("command:restart")) {
+                    if (isStartingUp) {
+                        System.out.println("restarting");
+                        responseCode = 200;
+                        response = new Gson().toJson(Map.of("command", "restart"));
+                        isStartingUp = false;
+                    } else {
+                        responseCode = 405;
+                        response = "Invalid request command in restart";
+                    }
+                    
+                } else {
                     responseCode = 200;
                 }
                 break;
@@ -131,6 +150,11 @@ public class ProductService {
         OutputStream os = exchange.getResponseBody();
         os.write(response.getBytes());
         os.close();
+
+        if (shutdown) {
+            ProductService.server.stop(0);
+            System.exit(0);
+        }
     }
 
     //return String.format("{\"id\": %d, \"name\": \"%s\", \"description\": \"%s\", \"price\": %.2f, \"quantity\": %d}", product.id, product.name, product.description, product.price, product.quantity);
@@ -179,7 +203,17 @@ public class ProductService {
             String body = scanner.useDelimiter("\\A").next();
             Map<String, String> data = JSONParser(body);
             // get command in input, otherwise return Invalid
+
             String command = data.get("command");
+
+            if (!command.equals("restart") && isStartingUp) {
+                System.out.println("Starting from scratch");
+                try (Connection conn = connect(); Statement statement = conn.createStatement()) {
+                    statement.execute("DELETE FROM products WHERE 1=1");
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+            }
             switch (command) {
                 case "create":
                     return createProduct(data);
@@ -188,8 +222,9 @@ public class ProductService {
                 case "delete":
                     return deleteProduct(data);
                 case "shutdown":
-                    ProductService.server.stop(0);
-                    System.exit(0);
+                    return "command:shutdown";
+                case "restart":
+                    return "command:restart";
                 default:
                     return "Invalid command";
             }
