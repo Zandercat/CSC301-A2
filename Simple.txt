@@ -1,13 +1,12 @@
-USER create 10 username2NKlLXs elOf@Y4vxdHuRs2620f.com bY3NAKPS
-USER create 3 usernameKPTgmeH 36a9@hbCa.com gOmaQKKw
-USER create 4 usernameFw5hdTh CYDJ@vMLrNA.com GMmhdr6J
-PRODUCT create 2 productname-2398 3.99 9
-PRODUCT create 3 productname-2df398 3.99 32
-PRODUCT create 4 productname-sdd2398 blah 35.99 9
-PRODUCT create 5 productname-2398 53.99 1
-PRODUCT create 6 9889p0roductname-2398 3.79 5
-ORDER place 10 2 2
-ORDER place 10 2 5
-ORDER place 3 3 3
-ORDER place 10 2 2
-ORDER place 10 2 2
+USER create 2 username2NKlLXs elOf@Y4vxdHuRs2620f.com bY3NAKPS
+USER get 2
+PRODUCT create 3 productname-2df398 good 3.99 100
+ORDER place 3 1
+ORDER place 3 2 5
+PRODUCT info 3
+USER update 2 email:ZwN1@ABiDLCNO9T.com password:wDkglEM2
+PRODUCT info 4
+USER delete 2 username2NKlLXs ZwN1@ABiDLCNO9T.com wDkglEM2
+PRODUCT update 3 name:granola price:6 quantity:20
+PRODUCT DELETE 3 granola 6 20
+PRODUCT info 3
