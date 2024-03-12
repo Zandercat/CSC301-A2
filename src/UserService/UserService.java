@@ -4,6 +4,7 @@ import com.sun.net.httpserver.*;
 import java.io.*;
 import java.net.*;
 import java.util.*;
+import java.util.stream.Collectors;
 import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -19,6 +20,8 @@ import com.google.gson.Gson;
 
 
 public class UserService {
+
+    private static String filename;
 
     private static Connection connection;
 
@@ -46,6 +49,13 @@ public class UserService {
         }
     }
 
+    //method to read config file
+    public static Map<String, String> readConfigFile( String type) throws IOException {
+        String configContent = new String(Files.readAllBytes(Paths.get(filename)), "UTF-8");
+        String userServiceConfigContent = extractServiceConfig(configContent, type);
+        return JSONParser(userServiceConfigContent);
+    }
+
     public static void main(String[] args) throws IOException {
 
         //setup connection
@@ -58,9 +68,9 @@ public class UserService {
             return;
         }
 
-        /* // use "config.json" as the default config file name
-        String configFileName = "config.json";
-        // if an argument is provided, use it as the configuration file name
+        // use "config.json" as the default config file name
+        filename = "config.json";
+        /* // if an argument is provided, use it as the configuration file name
         if (args.length > 0) {
             configFileName = args[0]; // get filename in same path
         }
@@ -76,6 +86,7 @@ public class UserService {
         int port = Integer.parseInt(args[0]);
         String ip = args[1];
 
+        forwardConfigToISCS(port, ip);
 
         // start server
         UserService.server = HttpServer.create(new InetSocketAddress(ip, port), 0);
@@ -83,6 +94,8 @@ public class UserService {
         context.setHandler(UserService::handleRequest);
         UserService.server.start();
         System.out.println("Server started on IP " + ip + ", and port " + port + ".");
+
+
         
     }
 
@@ -322,6 +335,64 @@ public class UserService {
         } catch (SQLException e) {
             System.out.println(e.getMessage());
             return "User data does not match";
+        }
+    }
+
+    private static String forwardConfigToISCS(int thisPort, String thisIP) throws IOException {
+        Map<String, String> serviceConfig;
+        serviceConfig = readConfigFile("InterServiceCommunication");
+    
+        int port = Integer.parseInt(serviceConfig.get("port"));
+        String ip = serviceConfig.get("ip");
+        String targetUrl = "http://" + ip + ":" + port + "/setup";
+
+        HttpURLConnection connection = null;
+        try {
+            // Convert InputStream requestBody to String
+            String body = new Gson().toJson(Map.of("IP", thisIP, "port", thisPort, "type", "user"));
+            System.out.println("Sending POST request to: " + targetUrl + " with body: " + body);
+    
+            // Create URL and open connection
+            URL url = new URL(targetUrl);
+            connection = (HttpURLConnection) url.openConnection();
+    
+            // Set request method to the method received from the original request
+            connection.setRequestMethod("POST");
+    
+            // If the original request is POST, we need to write the body to the output stream
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setDoOutput(true);
+
+            try (OutputStream os = connection.getOutputStream()) {
+                byte[] input = body.getBytes(StandardCharsets.UTF_8);
+                os.write(input, 0, input.length);
+            }
+    
+            // Check the response code and read the response
+            int responseCode = connection.getResponseCode();
+            InputStream responseStream = (responseCode < HttpURLConnection.HTTP_BAD_REQUEST) ? connection.getInputStream() : connection.getErrorStream();
+    
+            StringBuilder response = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(responseStream, StandardCharsets.UTF_8))) {
+                String responseLine;
+                while ((responseLine = br.readLine()) != null) {
+                    response.append(responseLine.trim());
+                }
+            }
+    
+            System.out.println("Response Code: " + responseCode);
+            System.out.println("Response Message: " + response.toString());
+    
+            return response.toString();
+    
+        } catch (IOException e) {
+            e.printStackTrace();
+            return "Error: Unable to connect to ISCS.";
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
     
