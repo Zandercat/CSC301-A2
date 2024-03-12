@@ -54,7 +54,7 @@ start_product_service() {
 start_iscs() {
     # Add commands to start ISCS here
     echo "Starting ISCS..."
-    java -cp './compiled/JarFiles/*:./compiled/ISCS' -d src.ISCS.ISCS config.json
+    java -cp './compiled/JarFiles/*:./compiled/ISCS' src.ISCS.ISCS config.json
 }
 
 start_order_service() {

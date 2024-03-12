@@ -58,7 +58,7 @@ public class UserService {
             return;
         }
 
-        // use "config.json" as the default config file name
+        /* // use "config.json" as the default config file name
         String configFileName = "config.json";
         // if an argument is provided, use it as the configuration file name
         if (args.length > 0) {
@@ -71,7 +71,11 @@ public class UserService {
         Map<String, String> userServiceConfig = JSONParser(userServiceConfigContent);
         // get server port and IP from config.json
         int port = Integer.parseInt(userServiceConfig.get("port"));
-        String ip = userServiceConfig.get("ip");
+        String ip = userServiceConfig.get("ip"); */
+
+        int port = Integer.parseInt(args[0]);
+        String ip = args[1];
+
 
         // start server
         UserService.server = HttpServer.create(new InetSocketAddress(ip, port), 0);
