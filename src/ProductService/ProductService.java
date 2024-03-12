@@ -213,6 +213,8 @@ public class ProductService {
                 } catch (SQLException e) {
                     e.printStackTrace();
                 }
+
+                isStartingUp = false;
             }
             switch (command) {
                 case "create":

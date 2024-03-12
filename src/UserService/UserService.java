@@ -205,6 +205,8 @@ public class UserService {
                 } catch (SQLException e) {
                     e.printStackTrace();
                 }
+
+                isStartingUp = false;
             }
 
             switch (command) {

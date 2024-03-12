@@ -164,8 +164,6 @@ public class OrderService {
             if ("place order".equals(command)) {
                 return placeOrder(data);
             } else if ("shutdown".equals(command)) {
-                forwardMessageToService(1, "dummy/path/shutdown", body, "POST");
-                forwardMessageToService(0, "dummy/path/shutdown", body, "POST");
                 OrderService.server.stop(0);
                 System.exit(0);
                 return "Unreachable";
@@ -174,15 +172,11 @@ public class OrderService {
                     return "Restart must be the first command in a workload.";
                 }
                 
-                System.out.println("Starting from scratch");
                 try (Statement statement = connection.createStatement()) {
                     statement.execute("DELETE FROM orders WHERE 1=1");
                 } catch (SQLException e) {
                     e.printStackTrace();
                 }
-                forwardMessageToService(1, "dummy/path/restart", body, "POST");
-                
-                forwardMessageToService(0, "dummy/path/restart", body, "POST");
 
                 OrderService.isStartingUp = false;
                 return "Restarting...";
@@ -195,77 +189,11 @@ public class OrderService {
         }
     }
 
-    private static String forwardMessageToService(int type, String path, String body, String method) throws IOException {
-        Map<String, String> serviceConfig;
-        if (type == 0) {
-            serviceConfig = readConfigFile("ProductService");
-        } else {
-            serviceConfig = readConfigFile("UserService");
-        }
-    
-        int port = Integer.parseInt(serviceConfig.get("port"));
-        String ip = serviceConfig.get("ip");
-        String targetUrl = "http://" + ip + ":" + port + (type == 0 ? "/product" : "/user");
-
-        HttpURLConnection connection = null;
-        try {
-            // Convert InputStream requestBody to String
-            System.out.println("Sending " + method + " request to: " + targetUrl + " with body: " + body);
-    
-            // Create URL and open connection
-            URL url = new URL(targetUrl);
-            connection = (HttpURLConnection) url.openConnection();
-    
-            // Set request method to the method received from the original request
-            connection.setRequestMethod(method);
-    
-            // If the original request is POST, we need to write the body to the output stream
-            if ("POST".equals(method)) {
-                connection.setRequestProperty("Content-Type", "application/json");
-                connection.setDoOutput(true);
-    
-                try (OutputStream os = connection.getOutputStream()) {
-                    byte[] input = body.getBytes(StandardCharsets.UTF_8);
-                    os.write(input, 0, input.length);
-                }
-            }
-    
-            // Check the response code and read the response
-            int responseCode = connection.getResponseCode();
-            InputStream responseStream = (responseCode < HttpURLConnection.HTTP_BAD_REQUEST) ? connection.getInputStream() : connection.getErrorStream();
-    
-            StringBuilder response = new StringBuilder();
-            try (BufferedReader br = new BufferedReader(
-                    new InputStreamReader(responseStream, StandardCharsets.UTF_8))) {
-                String responseLine;
-                while ((responseLine = br.readLine()) != null) {
-                    response.append(responseLine.trim());
-                }
-            }
-    
-            System.out.println("Response Code: " + responseCode);
-            System.out.println("Response Message: " + response.toString());
-    
-            return response.toString();
-    
-        } catch (IOException e) {
-            e.printStackTrace();
-            return "Error: Unable to connect to service.";
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
-        }
-    }
 
     // type 1 = User, type 0 = Product
     private static String forwardRequestToService(int type, String path, InputStream requestBody, String method) throws IOException {
         Map<String, String> serviceConfig;
-        if (type == 0) {
-            serviceConfig = readConfigFile("ProductService");
-        } else {
-            serviceConfig = readConfigFile("UserService");
-        }
+        serviceConfig = readConfigFile("InterServiceCommunication");
     
         int port = Integer.parseInt(serviceConfig.get("port"));
         String ip = serviceConfig.get("ip");

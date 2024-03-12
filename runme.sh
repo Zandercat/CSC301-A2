@@ -11,7 +11,8 @@
 # compile productService -> javac -cp './compiled/jarFiles/*;./src/productService' -d './compiled/productService' .\src\productService\productService.java
 # run productService -> java -cp './compiled/jarFiles/*;./compiled/productService' src.ProductService.productService config.json
 
-# run ISCS -> py ./src/ISCS/ISCS.py config.json
+# compile ISCS -> javac -cp './compiled/jarFiles/*;./src/ISCS' -d './compiled/ISCS' ./src/ISCS/ISCS.java
+# run ISCS -> java -cp './compiled/jarFiles/*;./compiled/ISCS' src.ISCS.ISCS config.json
 
 #run workloadparser -> py ./src/workloadparser/workloadparser.py config.json <workload file>
 
@@ -25,48 +26,48 @@
 # compile productService -> javac -cp './compiled/jarFiles/*:./src/productService' -d './compiled/productService' ./src/ProductService/productService.java
 # run productService -> java -cp './compiled/jarFiles/*:./compiled/productService' src.ProductService.productService config.json
 
-# run ISCS -> python3 ./src/ISCS/iscs.py config.json
+# compile ISCS -> javac -cp './compiled/jarFiles/*:./src/ISCS' -d './compiled/ISCS' ./src/ISCS/ISCS.java
+# run ISCS -> java -cp './compiled/jarFiles/*:./compiled/ISCS' src.ISCS.ISCS config.json
 
 #run workloadparser -> python3 ./src/workloadparser/workloadparser.py config.json <workload file>
 compile() {
     # Add compilation commands here
     echo "Compiling all code..."
-    javac -cp './compiled/jarFiles/*:./src/UserService' -d './compiled/UserService' ./src/UserService/UserService.java
-    javac -cp './compiled/jarFiles/*:./src/OrderService' -d './compiled/OrderService' ./src/OrderService/OrderService.java
-    javac -cp './compiled/jarFiles/*:./src/ProductService' -d './compiled/ProductService' ./src/ProductService/ProductService.java
-    echo "Downloading JAR files..."
-    wget -P ./compiled/jarFiles/ https://repo1.maven.org/maven2/org/xerial/sqlite-jdbc/3.45.0.0/sqlite-jdbc-3.45.0.0.jar
+    javac -cp './compiled/JarFiles/*:./src/UserService' -d './compiled/UserService' ./src/UserService/UserService.java
+    javac -cp './compiled/JarFiles/*:./src/OrderService' -d './compiled/OrderService' ./src/OrderService/OrderService.java
+    javac -cp './compiled/JarFiles/*:./src/ProductService' -d './compiled/ProductService' ./src/ProductService/ProductService.java
+    javac -cp './compiled/JarFiles/*:./src/ISCS' -d './compiled/ISCS' ./src/ISCS/ISCS.java
 }
 
 start_user_service() {
     # Add commands to start User service here
     echo "Starting User service..."
-    java -cp './compiled/jarFiles/*:./compiled/UserService' src.UserService.UserService config.json
+    java -cp './compiled/JarFiles/*:./compiled/UserService' src.UserService.UserService config.json
 }
 
 start_product_service() {
     # Add commands to start Product service here
     echo "Starting Product service..."
-    java -cp './compiled/jarFiles/*:./compiled/ProductService' src.ProductService.ProductService config.json
+    java -cp './compiled/JarFiles/*:./compiled/ProductService' src.ProductService.ProductService config.json
 }
 
 start_iscs() {
     # Add commands to start ISCS here
     echo "Starting ISCS..."
-    python3 ./compiled/ISCS/iscs.py config.json
+    java -cp './compiled/JarFiles/*:./compiled/ISCS' -d src.ISCS.ISCS config.json
 }
 
 start_order_service() {
     # Add commands to start Order service here
     echo "Starting Order service..."
-    java -cp './compiled/jarFiles/*:./compiled/OrderService' src.OrderService.OrderService config.json
+    java -cp './compiled/JarFiles/*:./compiled/OrderService' src.OrderService.OrderService config.json
 }
 
 start_workload_parser() {
-    workload_file="$1"
+    productWorkload="$1"
     # Add commands to start workload parser here
-    echo "Starting workload parser with file: $workload_file..."
-    python3 ./compiled/workloadparser/workloadparser.py config.json $workload_file
+    echo "Starting workload parser with file: $productWorkload..."
+    python3 ./compiled/workloadparser/workloadparser.py config.json $productWorkload
 }
 
 usage() {
