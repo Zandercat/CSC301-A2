@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="JarFiles">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/compiled/JarFiles/json-simple-1.1.jar!/" />
+      <root url="jar://$PROJECT_DIR$/compiled/JarFiles/gson-2.8.5.jar!/" />
+      <root url="jar://$PROJECT_DIR$/compiled/JarFiles/slf4j-nop-1.7.36.jar!/" />
+      <root url="jar://$PROJECT_DIR$/compiled/JarFiles/slf4j-api-1.7.36.jar!/" />
+      <root url="jar://$PROJECT_DIR$/compiled/JarFiles/sqlite-jdbc-3.45.0.0.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
