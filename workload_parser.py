@@ -58,96 +58,71 @@ def parse_file(f):
         else:
             print("Error: Unknown Value: }")
 
-def parse_user(parts, extracted_url):
-    if parts[0] == "get":
-        if len(parts) == 2:
-            user_id = parts[1]
-            url = f"{extracted_url}/user/{user_id}"
-            make_get_request(url)
-        else:
-            print("Invalid GET request format.")
-        return
-
-    if len(parts) < 2:
-        print("Missing command details for non-GET request.")
-        return
-
-    command = parts[0]
+def parse_user(parts,extracted_url):
     
-    user_id = parts[1] if len(parts) > 1 and parts[1].isdigit() else "placeholder"
+    if parts[0] == "get" and len(parts) == 2:
+        id = parts[1]
+        url = f"{extracted_url}/user/{id}"
+        make_get_request(url)
+    
+    elif parts[0] != "get":
+        current_size = len(parts)
 
-    data = {
-        "command": command,
-        "id": user_id
-    }
+        if current_size < 5:
+            additional_elements = 5 - current_size
+            parts.extend(["placeholder"] * additional_elements)
 
-    if command == "create":
-        while len(parts) < 5:
-            parts.append("placeholder")
+        command,id,user,email,password =parts
+        if parts[0] == "create" or parts[0] == "delete":
+            data = {
+            "command": parts[0],
+            "id": id,
+            "username": user,
+            "email": email,
+            "password": password
+        }
+            url = f"{extracted_url}/user"
+            make_post_request(url, data)
+        elif command == "update":
+            id = parts[1]  
+            data = {"command": command, "id": id}
 
-        user = parts[2] if parts[2] else "placeholder"
-        email_candidate = parts[3]
-        email = email_candidate if email_candidate.count('@') == 1 and '.' in email_candidate[email_candidate.index('@'):] else "placeholder"
-        password = parts[4] if parts[4] else "placeholder"
+            for part in parts[2:]:
+                if ':' in part:
+                    key, value = part.split(':', 1)
+                    data[key] = value
 
-        data.update({"username": user, "email": email, "password": password})
+            url = f"{extracted_url}/user"
+            print(data)
+            make_post_request(url, data)
 
-    elif command == "update":
-        if user_id != "placeholder":
-            if len(parts) > 2:
-                data["username"] = parts[2] if not parts[2].isdigit() else "placeholder"
-            
-            if len(parts) > 3:
-                email_candidate = parts[3]
-                is_valid_email = email_candidate.count('@') == 1 and '.' in email_candidate[email_candidate.index('@'):]
-                data["email"] = email_candidate if is_valid_email and not email_candidate.isdigit() else "placeholder"
-
-            if len(parts) > 4:
-                data["password"] = parts[4] if parts[4] else "placeholder"
-
-    if command in ["create", "update", "delete"]:
-        url = f"{extracted_url}/user"
-        print(data)
-        make_post_request(url, data)
     else:
-        print("Unsupported command.")
-
-
-
+        print("Improper Format")
         
 def parse_product(parts, extracted_url):
     if parts[0] == "info" and len(parts) == 2:
         id = parts[1]
         url = f"{extracted_url}/product/{id}"
         make_get_request(url)
-    elif parts[0] == "create":
-        command, id, name = parts[:3]  
-        description = "" 
-
-        i = 3 
-        while i < len(parts):
-            part = parts[i]
-            try:
-                price = float(part)
-                if i + 1 < len(parts):
-                    quantity = int(parts[i + 1])
-                break  
-            except ValueError:
-                description += ("" if description == "" else " ") + part
-            i += 1 
-        description = description.strip('"')
-
+    elif parts[0] == "create" :
+        
+        current_size = len(parts)
+        if current_size < 6:
+            additional_elements = 6 - current_size
+            parts.extend(["placeholder"] * additional_elements)
+        
+        command, id, productname, description, price, quantity = parts
         data = {
             "command": command,
             "id": id,
-            "name": name,
+            "productname":  productname,
             "description": description,
             "price": price,
             "quantity": quantity
         }
+        
         url = f"{extracted_url}/product"
         make_post_request(url, data)
-        
 
     elif parts[0] == "DELETE":
 
@@ -159,11 +134,11 @@ def parse_product(parts, extracted_url):
             parts.extend(["placeholder"] * additional_elements)
 
         print(parts)
-        command, id, name, price, quantity = parts
+        command, id, productname, price, quantity = parts
         data = {
             "command": command,
             "id": id,
-            "name": name,
+            "productname": productname,
             "price": price,
             "quantity": quantity
         }
@@ -187,17 +162,17 @@ def parse_product(parts, extracted_url):
         print("Improper Format")
 
 def parse_order(parts,extracted_url):
-    print(parts)
-    if parts[0] in "place order":
+    if parts[0] == "place" and parts[1] == "order":
         current_size = len(parts)
         if current_size < 4:
             additional_elements = 4 - current_size
             parts.extend(["placeholder"] * additional_elements)
-        command,user_id,product_id,quantity = parts
+        command_1,command_2,user_id,product_id,quantity = parts
+        combined = f"{command_1} {command_2}"
         data = {
-            "command": "place order",
-            "product_id": product_id,
+            "command": combined,
             "user_id": user_id,
+            "product_id": product_id,
             "quantity": quantity,
         }
 

@@ -1,3 +1,5 @@
+package src.OrderService;
+
 import java.net.*;
 import java.nio.file.*;
 import java.nio.charset.StandardCharsets;
@@ -17,11 +19,10 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.sql.Statement;
 import java.util.Map;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Scanner;
 import com.google.gson.Gson;
-
-
 
 
 public class OrderService {
@@ -30,30 +31,37 @@ public class OrderService {
 
     private static Connection connection;
 
+    private static Boolean isStartingUp = true;
+
+    private static HttpServer server;
+
     //initialize database connection 
     private static void initializeConnection() throws SQLException {
         // Adjust the URL for SQLite
-        String url = "jdbc:sqlite:database.db"; 
+        String url = "jdbc:postgresql://localhost:5434/postgres?user=username&password=password";
+
         connection = DriverManager.getConnection(url);
     }
 
     //initialize database and setup table 
     private static void initializeDatabase() {
-        String createTableSQL = "CREATE TABLE IF NOT EXISTS Orders (" +
-                                       "order_id INTEGER PRIMARY KEY AUTOINCREMENT,"  +  
-                                       "user_id INT NOT NULL," +
-                                       "product_id INT NOT NULL," +
-                                       "quantity INT NOT NULL," +
-                                       "order_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
-                                       "FOREIGN KEY(user_id) REFERENCES Users(user_id)," +
-                                       "FOREIGN KEY(product_id) REFERENCES Products(product_id))";
-    
+        String createTableSQL = "CREATE TABLE IF NOT EXISTS orders (" +
+                                 "order_id SERIAL PRIMARY KEY," +
+                                 "user_id INT NOT NULL," +
+                                 "product_id INT NOT NULL," +
+                                 "quantity INT NOT NULL," +
+                                 "order_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP," +
+                                 "FOREIGN KEY(user_id) REFERENCES users(id)," +
+                                 "FOREIGN KEY(product_id) REFERENCES products(id)" +
+                                 ")";
+        
         try (Statement statement = connection.createStatement()) {
             statement.execute(createTableSQL);
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
+    
     
 
     //method to read config file
@@ -87,12 +95,12 @@ public class OrderService {
         String ip = userServiceConfig.get("ip");
     
         // Start the server
-        HttpServer server = HttpServer.create(new InetSocketAddress(ip, port), 0);
+        OrderService.server = HttpServer.create(new InetSocketAddress(ip, port), 0);
         // endpoints
-        HttpContext orderContext = server.createContext("/order");
-        HttpContext productContext = server.createContext("/product");
-        HttpContext userContext = server.createContext("/user");
-        HttpContext userPurchasedContext = server.createContext("/user/purchased");
+        HttpContext orderContext = OrderService.server.createContext("/order");
+        HttpContext productContext = OrderService.server.createContext("/product");
+        HttpContext userContext = OrderService.server.createContext("/user");
+        HttpContext userPurchasedContext = OrderService.server.createContext("/user/purchased");
     
         // Set the same handler for all contexts
         orderContext.setHandler(OrderService::handleRequest);
@@ -100,7 +108,7 @@ public class OrderService {
         userContext.setHandler(OrderService::handleRequest);
         userPurchasedContext.setHandler(OrderService::handleRequest);
     
-        server.start();
+        OrderService.server.start();
         System.out.println("Server started on IP " + ip + ", and port " + port + ".");
     }
     
@@ -146,8 +154,9 @@ public class OrderService {
         OutputStream os = exchange.getResponseBody();
         os.write(response.getBytes());
         os.close();
+
+        OrderService.isStartingUp = false;
     }
-    
     
     // POST request handler to place Order
     private static String handleOrderRequest(InputStream requestBody) {
@@ -157,6 +166,30 @@ public class OrderService {
             String command = data.get("command");
             if ("place order".equals(command)) {
                 return placeOrder(data);
+            } else if ("shutdown".equals(command)) {
+                forwardMessageToService(1, "dummy/path/shutdown", body, "POST");
+                forwardMessageToService(0, "dummy/path/shutdown", body, "POST");
+                OrderService.server.stop(0);
+                System.exit(0);
+                return "Unreachable";
+            } else if ("restart".equals(command)) {
+                if (!OrderService.isStartingUp){
+                    return "Restart must be the first command in a workload.";
+                }
+                
+                System.out.println("Starting from scratch");
+                try (Statement statement = connection.createStatement()) {
+                    statement.execute("DELETE FROM orders WHERE 1=1");
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+                forwardMessageToService(1, "dummy/path/restart", body, "POST");
+                
+                forwardMessageToService(0, "dummy/path/restart", body, "POST");
+
+                OrderService.isStartingUp = false;
+                return "Restarting...";
+
             } else {
                 return "Invalid command.";
             }
@@ -165,8 +198,7 @@ public class OrderService {
         }
     }
 
-    // type 1 = User, type 0 = Product
-    private static String forwardRequestToService(int type, String path, InputStream requestBody, String method) throws IOException {
+    private static String forwardMessageToService(int type, String path, String body, String method) throws IOException {
         Map<String, String> serviceConfig;
         if (type == 0) {
             serviceConfig = readConfigFile("ProductService");
@@ -178,25 +210,10 @@ public class OrderService {
         String ip = serviceConfig.get("ip");
         String targetUrl = "http://" + ip + ":" + port + (type == 0 ? "/product" : "/user");
 
-        // GET request forwarding
-        if ("GET".equals(method)) {
-            String getResponse;
-            String[] paths = path.split("/");
-            try {
-                getResponse = sendGetRequest(targetUrl + '/' + paths[2]);
-                System.out.println("Response Message: " + getResponse.toString());
-                return getResponse;
-            } catch (IOException e) {
-                return "Invalid";
-            }
-        }
-
         HttpURLConnection connection = null;
         try {
             // Convert InputStream requestBody to String
-            String body = new BufferedReader(new InputStreamReader(requestBody))
-                            .lines().collect(Collectors.joining("\n"));
-            //System.out.println("Sending " + method + " request to: " + targetUrl + " with body: " + body);
+            System.out.println("Sending " + method + " request to: " + targetUrl + " with body: " + body);
     
             // Create URL and open connection
             URL url = new URL(targetUrl);
@@ -230,7 +247,87 @@ public class OrderService {
             }
     
             System.out.println("Response Code: " + responseCode);
-            //System.out.println("Response Message: " + response.toString());
+            System.out.println("Response Message: " + response.toString());
+    
+            return response.toString();
+    
+        } catch (IOException e) {
+            e.printStackTrace();
+            return "Error: Unable to connect to service.";
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    // type 1 = User, type 0 = Product
+    private static String forwardRequestToService(int type, String path, InputStream requestBody, String method) throws IOException {
+        Map<String, String> serviceConfig;
+        if (type == 0) {
+            serviceConfig = readConfigFile("ProductService");
+        } else {
+            serviceConfig = readConfigFile("UserService");
+        }
+    
+        int port = Integer.parseInt(serviceConfig.get("port"));
+        String ip = serviceConfig.get("ip");
+        String targetUrl = "http://" + ip + ":" + port + (type == 0 ? "/product" : "/user");
+
+
+        // GET request forwarding
+        if ("GET".equals(method)) {
+            String getResponse;
+            String[] paths = path.split("/");
+            try {
+                getResponse = sendGetRequest(targetUrl + '/' + paths[2]);
+                System.out.println("Response Message: " + getResponse.toString());
+                return getResponse;
+            } catch (IOException e) {
+                return "Invalid";
+            }
+        }
+
+        HttpURLConnection connection = null;
+        try {
+            // Convert InputStream requestBody to String
+            String body = new BufferedReader(new InputStreamReader(requestBody))
+                            .lines().collect(Collectors.joining("\n"));
+            System.out.println("Sending " + method + " request to: " + targetUrl + " with body: " + body);
+    
+            // Create URL and open connection
+            URL url = new URL(targetUrl);
+            connection = (HttpURLConnection) url.openConnection();
+    
+            // Set request method to the method received from the original request
+            connection.setRequestMethod(method);
+    
+            // If the original request is POST, we need to write the body to the output stream
+            if ("POST".equals(method)) {
+                connection.setRequestProperty("Content-Type", "application/json");
+                connection.setDoOutput(true);
+    
+                try (OutputStream os = connection.getOutputStream()) {
+                    byte[] input = body.getBytes(StandardCharsets.UTF_8);
+                    os.write(input, 0, input.length);
+                }
+            }
+    
+            // Check the response code and read the response
+            int responseCode = connection.getResponseCode();
+            InputStream responseStream = (responseCode < HttpURLConnection.HTTP_BAD_REQUEST) ? connection.getInputStream() : connection.getErrorStream();
+    
+            StringBuilder response = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(responseStream, StandardCharsets.UTF_8))) {
+                String responseLine;
+                while ((responseLine = br.readLine()) != null) {
+                    response.append(responseLine.trim());
+                }
+            }
+    
+            System.out.println("Response Code: " + responseCode);
+            System.out.println("Response Message: " + response.toString());
     
             return response.toString();
     
@@ -248,7 +345,7 @@ public class OrderService {
 
     // get the amount purchased by user 
     private static String getUserPurchases(int userId) {
-        String sql = "SELECT product_id, SUM(quantity) as total_quantity FROM Orders WHERE user_id = ? GROUP BY product_id";
+        String sql = "SELECT product_id, SUM(quantity) as total_quantity FROM orders WHERE user_id = ? GROUP BY product_id";
         Map<Integer, Integer> purchases = new HashMap<>();
     
         try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
@@ -261,8 +358,7 @@ public class OrderService {
                 purchases.put(productId, quantity);
             }
         } catch (SQLException e) {
-            System.out.println("Error fetching user purchases: " + e.getMessage());
-            return new Gson().toJson(new HashMap<>()); // Return an empty JSON object in case of SQL exception.
+            return new Gson().toJson(Map.of("error", "Error fetching user purchases: " + e.getMessage()));
         }
     
         return new Gson().toJson(purchases);
@@ -273,7 +369,7 @@ public class OrderService {
 
 
     private static boolean userExists(int user_id) {
-    String sql = "SELECT id FROM Users WHERE id = ?";
+    String sql = "SELECT id FROM users WHERE id = ?";
     try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
         pstmt.setInt(1, user_id);
         ResultSet rs = pstmt.executeQuery();
@@ -285,13 +381,14 @@ public class OrderService {
 }
 
 private static boolean product_checker(int product_id, int requestedQuantity) {
-    String updateSql = "UPDATE Products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?";
+    String updateSql = "UPDATE products SET quantity = quantity - ? WHERE id = ? AND quantity >= ?";
 
     try (PreparedStatement updateStmt = connection.prepareStatement(updateSql)) {
         updateStmt.setInt(1, requestedQuantity);
         updateStmt.setInt(2, product_id);
         updateStmt.setInt(3, requestedQuantity);
         int affectedRows = updateStmt.executeUpdate();
+        //System.out.println(String.format("Requested: %d. ID: %d.", requestedQuantity, product_id));
         return affectedRows > 0;
     } catch (SQLException e) {
         System.out.println("Error updating product quantity: " + e.getMessage());
@@ -309,14 +406,14 @@ private static String placeOrder(Map<String, String> data) {
 
 
     if (!userExists(user_id)) {
-        return new Gson().toJson(Map.of("error", "User does not exist."));
+        return new Gson().toJson(Map.of("error", "User dosent exist"));
     }
 
     if (!product_checker(product_id, requestedQuantity)) {
-        return new Gson().toJson(Map.of("error", "Product amount not enough"));
+        return "Product amount not enough";
     }
 
-    String sql = "INSERT INTO Orders(user_id, product_id, quantity) VALUES(?,?,?)";
+    String sql = "INSERT INTO orders(user_id, product_id, quantity) VALUES(?,?,?)";
     try (PreparedStatement pstmt = connection.prepareStatement(sql)) {
         pstmt.setInt(1, user_id);
         pstmt.setInt(2, product_id);
@@ -328,7 +425,6 @@ private static String placeOrder(Map<String, String> data) {
         } else {
             return new Gson().toJson(Map.of("status", "Success"));
         }
-
     } catch (SQLException e) {
         return new Gson().toJson(Map.of("error", "Error inserting order: " + e.getMessage()));
     }

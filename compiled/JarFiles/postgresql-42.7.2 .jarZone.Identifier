@@ -1,0 +1,4 @@
+[ZoneTransfer]
+ZoneId=3
+ReferrerUrl=https://github.com/pgjdbc/pgjdbc/releases/tag/REL42.7.2
+HostUrl=https://objects.githubusercontent.com/github-production-release-asset-2e65be/3370128/57839030-1c8d-4760-8c6a-4c378d9d29f4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20240312%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20240312T093829Z&X-Amz-Expires=300&X-Amz-Signature=35e9d9cf6c54a5c8ff9ad47b0ff4aad2738d3e21cd22702c13759f5963ba506c&X-Amz-SignedHeaders=host&actor_id=157326684&key_id=0&repo_id=3370128&response-content-disposition=attachment%3B%20filename%3Dpostgresql-42.7.2.jar&response-content-type=application%2Foctet-stream
