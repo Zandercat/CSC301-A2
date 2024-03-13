@@ -31,7 +31,7 @@ import java.util.concurrent.Executors;
 
 public class ISCS {
 
-    class ServiceInstance {
+    static class ServiceInstance {
         public int connections = 0;
         public String IP;
         public int port;
@@ -45,9 +45,9 @@ public class ISCS {
 
     private static ExecutorService executors;
 
-    private static ServiceInstance[] OrderServices;
-    private static ServiceInstance[] UserServices;
-    private static ServiceInstance[] ProductServices;
+    private static List<ServiceInstance> OrderServices = new ArrayList<ServiceInstance>();
+    private static List<ServiceInstance> UserServices = new ArrayList<ServiceInstance>();
+    private static List<ServiceInstance> ProductServices = new ArrayList<ServiceInstance>();
 
     private static Map<Integer, HttpExchange> exchanges;
     private static int lastID = 0;
@@ -156,6 +156,8 @@ public class ISCS {
                 printLines(command + " stdout:", pro.getInputStream());
                 printLines(command + " stderr:", pro.getErrorStream());
                 // System.out.println(command + " exitValue() " + pro.exitValue());
+                pro.children().forEach(processHandle -> processHandle.destroy());
+                pro.destroy();
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -277,7 +279,7 @@ public class ISCS {
     }
 
     // when a service is started up, it should send one of these requests to the ISCS HTTP server
-    // with a body of {"IP": "<ip address>", "port": "<port>"}
+    // with a body of {"IP": "<ip address>", "port": "<port>", "type": "user/product/order"}
     // so that the ISCS can register it and communicate with it
     // TODO: Make services do this
     public static void addServer(HttpExchange exchange) throws IOException {
@@ -285,6 +287,22 @@ public class ISCS {
         try (Scanner scanner = new Scanner(requestBody, StandardCharsets.UTF_8)) {
             String body = scanner.useDelimiter("\\A").next();
             Map<String, String> data = JSONParser(body);
+
+            String type = data.get("type");
+            ServiceInstance service = new ISCS.ServiceInstance(data.get("IP"), Integer.parseInt(data.get("port")));
+            switch (type) {
+                case "user":
+                    ISCS.UserServices.add(service);
+                    break;
+
+                case "product":
+                    ISCS.ProductServices.add(service);
+                    break;
+                
+                case "order":
+                    ISCS.OrderServices.add(service);
+                    break;
+            }
 
         } catch (Exception e) {
             return;
