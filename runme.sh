@@ -40,15 +40,17 @@ compile() {
 }
 
 start_user_service() {
+    port="$1"
     # Add commands to start User service here
-    echo "Starting User service..."
-    java -cp './compiled/JarFiles/*:./compiled/UserService' src.UserService.UserService config.json
+    echo "Starting User service with port: $port..."
+    java -cp './compiled/JarFiles/*:./compiled/UserService' src.UserService.UserService config.json "$port"
 }
 
 start_product_service() {
+    port="$1"
     # Add commands to start Product service here
     echo "Starting Product service..."
-    java -cp './compiled/JarFiles/*:./compiled/ProductService' src.ProductService.ProductService config.json
+    java -cp './compiled/JarFiles/*:./compiled/ProductService' src.ProductService.ProductService config.json "$port"
 }
 
 start_iscs() {
@@ -58,22 +60,23 @@ start_iscs() {
 }
 
 start_order_service() {
+    port="$1"
     # Add commands to start Order service here
     echo "Starting Order service..."
-    java -cp './compiled/JarFiles/*:./compiled/OrderService' src.OrderService.OrderService config.json
+    java -cp './compiled/JarFiles/*:./compiled/OrderService' src.OrderService.OrderService config.json "$port"
 }
 
 start_workload_parser() {
     productWorkload="$1"
     # Add commands to start workload parser here
     echo "Starting workload parser with file: $productWorkload..."
-    python3 ./compiled/workloadparser/workloadparser.py config.json $productWorkload
+    python3 ./compiled/workloadparser/workload_parser.py config.json "$productWorkload"
 }
 
 usage() {
     echo "Usage: ./runme.sh [-c | -u | -p | -i | -o | -w workloadfile]"
     echo "  -c              : Compile all code"
-    echo "  -u              : Start User service"
+    echo "  -u port         : Start User service on the given port"
     echo "  -p              : Start Product service"
     echo "  -i              : Start ISCS"
     echo "  -o              : Start Order service"
@@ -85,22 +88,25 @@ if [ "$#" -eq 0 ]; then
     usage
 fi
 
-while getopts ":cupiow:" option; do
+while getopts ":cu:p:io:w:" option; do
     case $option in
         c)
             compile
             ;;
         u)
-            start_user_service
+            port="$OPTARG"
+            start_user_service $port
             ;;
         p)
-            start_product_service
+            port="$OPTARG"
+            start_product_service $port
             ;;
         i)
             start_iscs
             ;;
         o)
-            start_order_service
+            port="$OPTARG"
+            start_order_service $port
             ;;
         w)
             workload_file="$OPTARG"

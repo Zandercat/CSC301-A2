@@ -37,7 +37,7 @@ def make_get_request(url):
 def parse_file(f):
     file = open(f)
     config = load_json("config.json")
-    order_service= config['OrderService']
+    order_service= config['InterServiceCommunication']
     extracted_url = f"http://{order_service['ip']}:{order_service['port']}"
     
 

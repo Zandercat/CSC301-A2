@@ -83,8 +83,10 @@ public class UserService {
         int port = Integer.parseInt(userServiceConfig.get("port"));
         String ip = userServiceConfig.get("ip"); */
 
-        int port = Integer.parseInt(args[0]);
-        String ip = args[1];
+        System.out.println(Arrays.toString(args));
+
+        int port = Integer.parseInt(args[1]);
+        String ip = "127.0.0.1";
 
         forwardConfigToISCS(port, ip);
 

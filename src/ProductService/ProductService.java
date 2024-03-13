@@ -26,6 +26,8 @@ public class ProductService {
 
     private static Boolean isStartingUp = true;
 
+    private static String filename;
+
     public static void main(String[] args) throws IOException {
         try {
             // use "config.json" as the default config file name
@@ -33,6 +35,7 @@ public class ProductService {
             // if an argument is provided, use it as the configuration file name
             if (args.length > 0) {
                 configFileName = args[0]; // get filename in same path
+                filename = args[0];
             }
 
             // parse JSON to Map in helper
@@ -40,10 +43,10 @@ public class ProductService {
             String productServiceConfigContent = extractServiceConfig(configContent, "ProductService");
             Map<String, String> productServiceConfig = JSONParser(productServiceConfigContent);
             // get server port and IP from config.json
-            int port = Integer.parseInt(productServiceConfig.get("port"));
+            int port = Integer.parseInt(args[1]);
             String ip = productServiceConfig.get("ip");
 
-            createNewTable();
+            forwardConfigToISCS(port, ip);
 
             // start server
             ProductService.server = HttpServer.create(new InetSocketAddress(ip, port), 0);
@@ -378,5 +381,70 @@ public class ProductService {
             }
         }
         return json.substring(startIndex, endIndex + 1); // include closing brace
+    }
+
+    private static String forwardConfigToISCS(int thisPort, String thisIP) throws IOException {
+        Map<String, String> serviceConfig;
+        serviceConfig = readConfigFile("InterServiceCommunication");
+
+        int port = Integer.parseInt(serviceConfig.get("port"));
+        String ip = serviceConfig.get("ip");
+        String targetUrl = "http://" + ip + ":" + port + "/setup";
+
+        HttpURLConnection connection = null;
+        try {
+            // Convert InputStream requestBody to String
+            String body = new Gson().toJson(Map.of("IP", thisIP, "port", thisPort, "type", "user"));
+            System.out.println("Sending POST request to: " + targetUrl + " with body: " + body);
+
+            // Create URL and open connection
+            URL url = new URL(targetUrl);
+            connection = (HttpURLConnection) url.openConnection();
+
+            // Set request method to the method received from the original request
+            connection.setRequestMethod("POST");
+
+            // If the original request is POST, we need to write the body to the output stream
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setDoOutput(true);
+
+            try (OutputStream os = connection.getOutputStream()) {
+                byte[] input = body.getBytes(StandardCharsets.UTF_8);
+                os.write(input, 0, input.length);
+            }
+
+            // Check the response code and read the response
+            int responseCode = connection.getResponseCode();
+            InputStream responseStream = (responseCode < HttpURLConnection.HTTP_BAD_REQUEST) ? connection.getInputStream() : connection.getErrorStream();
+
+            StringBuilder response = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(responseStream, StandardCharsets.UTF_8))) {
+                String responseLine;
+                while ((responseLine = br.readLine()) != null) {
+                    response.append(responseLine.trim());
+                }
+            }
+
+            System.out.println("Response Code: " + responseCode);
+            System.out.println("Response Message: " + response.toString());
+
+            return response.toString();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            return "Error: Unable to connect to ISCS.";
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    //method to read config file
+    public static Map<String, String> readConfigFile( String type) throws IOException {
+        String configContent = new String(Files.readAllBytes(Paths.get(filename)), "UTF-8");
+        String userServiceConfigContent = extractServiceConfig(configContent, type);
+        return JSONParser(userServiceConfigContent);
     }
 }

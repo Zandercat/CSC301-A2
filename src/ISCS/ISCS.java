@@ -31,7 +31,7 @@ import java.util.concurrent.Executors;
 
 public class ISCS {
 
-    class ServiceInstance {
+    static class ServiceInstance {
         public int connections = 0;
         public String IP;
         public int port;
@@ -45,9 +45,9 @@ public class ISCS {
 
     private static ExecutorService executors;
 
-    private static ServiceInstance[] OrderServices;
-    private static ServiceInstance[] UserServices;
-    private static ServiceInstance[] ProductServices;
+    private static List<ServiceInstance> OrderServices = new ArrayList<ServiceInstance>();
+    private static List<ServiceInstance> UserServices = new ArrayList<ServiceInstance>();
+    private static List<ServiceInstance> ProductServices = new ArrayList<ServiceInstance>();
 
     private static Map<Integer, HttpExchange> exchanges;
     private static int lastID = 0;
@@ -146,7 +146,7 @@ public class ISCS {
         //TODO: start multiple instances of each microservice
         //I'm not sure how to best do this or if they are supposed to all be on the same machine or different ones
 
-        List<Map<String, String>> UserConfig = readConfigFileList("UserService");
+        /*List<Map<String, String>> UserConfig = readConfigFileList("UserService");
 
         for (Map<String, String> map : UserConfig) {
             try {
@@ -161,7 +161,10 @@ public class ISCS {
                 e.printStackTrace();
             }
             
-        }
+        }*/
+
+        ISCS.server.start();
+        System.out.println("Server started on IP " + ip + ", and port " + port + ".");
     }
 
     private static void printLines(String cmd, InputStream ins) throws Exception {
@@ -179,9 +182,11 @@ public class ISCS {
         //save the exchange with the current client request
         exchanges.put(exchangeID, exchange);
         //pass the handling of this exchange off to the thread pool to be picked up and handled by a thread
+        System.out.println("Handling request on exchange " + exchangeID);
         executors.submit(new Runnable() {
             @Override
             public void run() {
+                System.out.println("Creating thread...");
                 String method = exchange.getRequestMethod();
                 InputStream requestBody = exchange.getRequestBody();
 
@@ -193,7 +198,7 @@ public class ISCS {
                 String path = requestURI.getPath();
                 String endpoint = path.substring(path.indexOf("/") + 1);
 
-                ServiceInstance[] services = null;
+                List<ServiceInstance> services = null;
                 switch (endpoint.substring(0, endpoint.indexOf("/"))) {
                     case "product" -> services = ProductServices;
                     case "user" -> services = UserServices;
@@ -257,7 +262,6 @@ public class ISCS {
 
                     //return response to the saved exchange
                     HttpExchange exchange = exchanges.get(exchangeID);
-                    exchanges.remove(exchangeID);
                     exchange.sendResponseHeaders(responseCode, response.getBytes().length);
                     OutputStream os = exchange.getResponseBody();
                     os.write(response.getBytes());
@@ -268,6 +272,8 @@ public class ISCS {
                         e.printStackTrace();
                     }
 
+                    exchanges.remove(exchangeID);
+
                 } catch (IOException e) {
                     System.out.println("Error in handling connection.");
                     e.printStackTrace();
@@ -277,7 +283,7 @@ public class ISCS {
     }
 
     // when a service is started up, it should send one of these requests to the ISCS HTTP server
-    // with a body of {"IP": "<ip address>", "port": "<port>"}
+    // with a body of {"IP": "<ip address>", "port": "<port>", "type": "user/product/order"}
     // so that the ISCS can register it and communicate with it
     // TODO: Make services do this
     public static void addServer(HttpExchange exchange) throws IOException {
@@ -285,6 +291,23 @@ public class ISCS {
         try (Scanner scanner = new Scanner(requestBody, StandardCharsets.UTF_8)) {
             String body = scanner.useDelimiter("\\A").next();
             Map<String, String> data = JSONParser(body);
+
+            String type = data.get("type");
+            ServiceInstance service = new ISCS.ServiceInstance(data.get("IP"), Integer.parseInt(data.get("port")));
+            switch (type) {
+                case "user":
+                    ISCS.UserServices.add(service);
+                    break;
+
+                case "product":
+                    ISCS.ProductServices.add(service);
+                    break;
+
+                case "order":
+                    ISCS.OrderServices.add(service);
+                    break;
+            }
+            System.out.println("Server added on IP " + data.get("IP") + ", and port " + data.get("port") + ".");
 
         } catch (Exception e) {
             return;
@@ -375,18 +398,18 @@ public class ISCS {
         return JSONListParser(userServiceConfigContent);
     }
 
-    public static ServiceInstance getLeastBusyService(ServiceInstance[] services) {
+    public static ServiceInstance getLeastBusyService(List<ServiceInstance> services) {
         int index = 0;
         int min = -1;
         int connections;
-        for (int i = 0; i < services.length; i++) {
-            connections = services[i].connections;
+        for (int i = 0; i < services.size(); i++) {
+            connections = services.get(i).connections;
             if (min < 0 || connections < min) {
                 min = connections;
                 index = i;
             }
         }
-        return services[index];
+        return services.get(index);
     }
 
 }

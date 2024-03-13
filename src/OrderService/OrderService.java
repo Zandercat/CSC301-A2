@@ -88,20 +88,22 @@ public class OrderService {
     
         /// Retrieve port and IP from the config file
         Map<String, String> userServiceConfig = readConfigFile("OrderService");
-        int port = Integer.parseInt(userServiceConfig.get("port"));
+        int port = Integer.parseInt(args[1]);
         String ip = userServiceConfig.get("ip");
+
+        forwardConfigToISCS(port, ip);
     
         // Start the server
         OrderService.server = HttpServer.create(new InetSocketAddress(ip, port), 0);
         // endpoints
         HttpContext orderContext = OrderService.server.createContext("/order");
-        HttpContext productContext = OrderService.server.createContext("/product");
+        //HttpContext productContext = OrderService.server.createContext("/product");
         HttpContext userContext = OrderService.server.createContext("/user");
         HttpContext userPurchasedContext = OrderService.server.createContext("/user/purchased");
     
         // Set the same handler for all contexts
         orderContext.setHandler(OrderService::handleRequest);
-        productContext.setHandler(OrderService::handleRequest); 
+        //productContext.setHandler(OrderService::handleRequest);
         userContext.setHandler(OrderService::handleRequest);
         userPurchasedContext.setHandler(OrderService::handleRequest);
     
@@ -266,7 +268,63 @@ public class OrderService {
         }
     }
 
-   
+    private static String forwardConfigToISCS(int thisPort, String thisIP) throws IOException {
+        Map<String, String> serviceConfig;
+        serviceConfig = readConfigFile("InterServiceCommunication");
+
+        int port = Integer.parseInt(serviceConfig.get("port"));
+        String ip = serviceConfig.get("ip");
+        String targetUrl = "http://" + ip + ":" + port + "/setup";
+
+        HttpURLConnection connection = null;
+        try {
+            // Convert InputStream requestBody to String
+            String body = new Gson().toJson(Map.of("IP", thisIP, "port", thisPort, "type", "user"));
+            System.out.println("Sending POST request to: " + targetUrl + " with body: " + body);
+
+            // Create URL and open connection
+            URL url = new URL(targetUrl);
+            connection = (HttpURLConnection) url.openConnection();
+
+            // Set request method to the method received from the original request
+            connection.setRequestMethod("POST");
+
+            // If the original request is POST, we need to write the body to the output stream
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setDoOutput(true);
+
+            try (OutputStream os = connection.getOutputStream()) {
+                byte[] input = body.getBytes(StandardCharsets.UTF_8);
+                os.write(input, 0, input.length);
+            }
+
+            // Check the response code and read the response
+            int responseCode = connection.getResponseCode();
+            InputStream responseStream = (responseCode < HttpURLConnection.HTTP_BAD_REQUEST) ? connection.getInputStream() : connection.getErrorStream();
+
+            StringBuilder response = new StringBuilder();
+            try (BufferedReader br = new BufferedReader(
+                    new InputStreamReader(responseStream, StandardCharsets.UTF_8))) {
+                String responseLine;
+                while ((responseLine = br.readLine()) != null) {
+                    response.append(responseLine.trim());
+                }
+            }
+
+            System.out.println("Response Code: " + responseCode);
+            System.out.println("Response Message: " + response.toString());
+
+            return response.toString();
+
+        } catch (IOException e) {
+            e.printStackTrace();
+            return "Error: Unable to connect to ISCS.";
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
 
     // get the amount purchased by user 
     private static String getUserPurchases(int userId) {
@@ -303,6 +361,7 @@ public class OrderService {
         System.out.println("Error checking user existence: " + e.getMessage());
         return false;
     }
+
 }
 
 private static boolean product_checker(int product_id, int requestedQuantity) {
