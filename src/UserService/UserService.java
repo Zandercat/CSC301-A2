@@ -24,6 +24,7 @@ public class UserService {
     private static String filename;
 
     private static Connection connection;
+    private static Connection ISCS;
 
     private static HttpServer server;
 
@@ -352,7 +353,7 @@ public class UserService {
         try {
             // Convert InputStream requestBody to String
             String body = new Gson().toJson(Map.of("IP", thisIP, "port", thisPort, "type", "user"));
-            System.out.println("Sending POST request to: " + targetUrl + " with body: " + body);
+            System.out.println("Sending ISCS setup POST request to: " + targetUrl + " with body: " + body);
     
             // Create URL and open connection
             URL url = new URL(targetUrl);

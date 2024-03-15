@@ -5,16 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="77a10bcd-5983-48b3-a6b8-bbf820006ef8" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/compiled/ISCS/src/ISCS/ISCS.class" beforeDir="false" afterPath="$PROJECT_DIR$/compiled/ISCS/src/ISCS/ISCS.class" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/compiled/OrderService/src/OrderService/OrderService.class" beforeDir="false" afterPath="$PROJECT_DIR$/compiled/OrderService/src/OrderService/OrderService.class" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/compiled/ProductService/src/ProductService/ProductService.class" beforeDir="false" afterPath="$PROJECT_DIR$/compiled/ProductService/src/ProductService/ProductService.class" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/compiled/UserService/src/UserService/UserService.class" beforeDir="false" afterPath="$PROJECT_DIR$/compiled/UserService/src/UserService/UserService.class" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/compiled/workloadparser/workload_parser.py" beforeDir="false" afterPath="$PROJECT_DIR$/compiled/workloadparser/workload_parser.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/runme.sh" beforeDir="false" afterPath="$PROJECT_DIR$/runme.sh" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ISCS/ISCS.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/ISCS/ISCS.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/OrderService/OrderService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/OrderService/OrderService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ProductService/ProductService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/ProductService/ProductService.java" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/UserService/UserService.java" beforeDir="false" afterPath="$PROJECT_DIR$/src/UserService/UserService.java" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />

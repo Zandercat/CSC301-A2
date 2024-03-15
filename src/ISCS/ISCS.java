@@ -143,26 +143,6 @@ public class ISCS {
 
         executors = Executors.newFixedThreadPool(10); //TODO: Change from hardcoded to config?
 
-        //TODO: start multiple instances of each microservice
-        //I'm not sure how to best do this or if they are supposed to all be on the same machine or different ones
-
-        /*List<Map<String, String>> UserConfig = readConfigFileList("UserService");
-
-        for (Map<String, String> map : UserConfig) {
-            try {
-                // runProcess("java -cp './compiled/JarFiles/*;./compiled/UserService' src.UserService.UserService", map.get("port"), map.get("ip"));
-                String command = "java -cp ./compiled/JarFiles/*;./compiled/UserService src.UserService.UserService";
-                Process pro = new ProcessBuilder("java", "-cp", "./compiled/JarFiles/*;./compiled/UserService", "src.UserService.UserService", map.get("port"), map.get("ip")).start();
-                printLines(command + " stdout:", pro.getInputStream());
-                printLines(command + " stderr:", pro.getErrorStream());
-                // System.out.println(command + " exitValue() " + pro.exitValue());
-
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            
-        }*/
-
         ISCS.server.start();
         System.out.println("Server started on IP " + ip + ", and port " + port + ".");
     }
@@ -176,37 +156,98 @@ public class ISCS {
         }
     }
 
-    private static void handleRequest(HttpExchange exchange) throws IOException {
-        final int exchangeID = lastID;
+    public static void handleRequestTest(HttpExchange exchange) throws IOException {
+        int exchangeID = lastID;
         lastID++;
         //save the exchange with the current client request
         exchanges.put(exchangeID, exchange);
         //pass the handling of this exchange off to the thread pool to be picked up and handled by a thread
         System.out.println("Handling request on exchange " + exchangeID);
+
+        //BREAK
+        InputStream requestBody = exchange.getRequestBody();
+        int responseCode = 500; //will be overwritten if there is no server error
+        String response = "Unknown error occurred.";
+        try (Scanner scanner = new Scanner(requestBody, StandardCharsets.UTF_8)) {
+            String body = scanner.useDelimiter("\\A").next();
+            Map<String, String> data = JSONParser(body);
+
+            String type = data.get("type");
+            ServiceInstance service = new ISCS.ServiceInstance(data.get("IP"), Integer.parseInt(data.get("port")));
+            switch (type) {
+                case "user":
+                    ISCS.UserServices.add(service);
+                    break;
+
+                case "product":
+                    ISCS.ProductServices.add(service);
+                    break;
+
+                case "order":
+                    ISCS.OrderServices.add(service);
+                    break;
+            }
+            System.out.println("Added " + type + "service on IP " + data.get("IP") + ", port " + data.get("port") + ".");
+            
+            responseCode = 200;
+            response = "Service connected successfully.";
+            
+        } catch (Exception e) {
+            responseCode = 500;
+            response = "Exception when connecting to server.";
+        } finally {
+            exchange.sendResponseHeaders(responseCode, response.getBytes().length);
+            OutputStream os = exchange.getResponseBody();
+            os.write(response.getBytes());
+            os.close();
+        }
+    }
+
+    private static void handleRequest(HttpExchange exchange) throws IOException {
+        int exchangeID = lastID;
+        lastID++;
+        //save the exchange with the current client request
+        //exchanges.put(exchangeID, exchange);
+        //pass the handling of this exchange off to the thread pool to be picked up and handled by a thread
+        System.out.println("Handling request on exchange " + exchangeID);
+
+        int responseCode = 200;
         executors.submit(new Runnable() {
             @Override
             public void run() {
                 System.out.println("Creating thread...");
                 String method = exchange.getRequestMethod();
+                System.out.println("Thread handling " + method + " request...");
                 InputStream requestBody = exchange.getRequestBody();
 
                 Scanner scanner = new Scanner(requestBody, StandardCharsets.UTF_8);
                 String body = scanner.useDelimiter("\\A").next();
+                scanner.close();;
+                System.out.println("Request body scanned...");
 
                 //determine whether request is a user, order or product request by extracting the first slash and after
                 URI requestURI = exchange.getRequestURI();
                 String path = requestURI.getPath();
                 String endpoint = path.substring(path.indexOf("/") + 1);
+                System.out.println("Request path extracted...");
 
-                List<ServiceInstance> services = null;
-                switch (endpoint.substring(0, endpoint.indexOf("/"))) {
-                    case "product" -> services = ProductServices;
-                    case "user" -> services = UserServices;
-                    case "order" -> services = OrderServices;
+                ServiceInstance service = null;
+                if (endpoint.charAt(0) == 'p') {
+                    service = getLeastBusyService(ProductServices);
+                } else if (endpoint.charAt(0) == 'o' || endpoint.contains("pu")) {
+                    //pu for purchased
+                    //because we handled purchase history in order service for ease of querying order tables
+                    //so those requests need to go there
+                    service = getLeastBusyService(OrderServices);
+                } else if (endpoint.charAt(0) == 'u') {
+                    service = getLeastBusyService(UserServices);
+                } else {
+                    System.out.println("Invalid endpoint");
+                    return;
                 }
+                System.out.println("Service instance selected...");
 
                 //get the service with the least active connections and make a new connection to it
-                ServiceInstance service = getLeastBusyService(services);
                 service.connections++;
 
                 int port = service.port;
@@ -222,6 +263,7 @@ public class ISCS {
                     // Create URL and open connection
                     URL url = new URL(targetUrl);
                     connection = (HttpURLConnection) url.openConnection();
+                    System.out.println("Connection established...");
 
                     // Set request method to the method received from the original request
                     connection.setRequestMethod(method);
@@ -234,13 +276,14 @@ public class ISCS {
                         try (OutputStream os = connection.getOutputStream()) {
                             byte[] input = body.getBytes(StandardCharsets.UTF_8);
                             os.write(input, 0, input.length);
+                            System.out.println("Request body written to output...");
                         }
                     }
 
                     // Check the response code and read the response
                     int responseCode = connection.getResponseCode();
                     InputStream responseStream = (responseCode < HttpURLConnection.HTTP_BAD_REQUEST) ? connection.getInputStream() : connection.getErrorStream();
-
+                    System.out.println("Response gotten from service...");
                     StringBuilder responseBuilder = new StringBuilder();
                     try (BufferedReader br = new BufferedReader(
                             new InputStreamReader(responseStream, StandardCharsets.UTF_8))) {
@@ -261,7 +304,7 @@ public class ISCS {
                     System.out.println("Response Message: " + response);
 
                     //return response to the saved exchange
-                    HttpExchange exchange = exchanges.get(exchangeID);
+                    //HttpExchange exchange = exchanges.get(exchangeID);
                     exchange.sendResponseHeaders(responseCode, response.getBytes().length);
                     OutputStream os = exchange.getResponseBody();
                     os.write(response.getBytes());
@@ -272,7 +315,7 @@ public class ISCS {
                         e.printStackTrace();
                     }
 
-                    exchanges.remove(exchangeID);
+                    //exchanges.remove(exchangeID);
 
                 } catch (IOException e) {
                     System.out.println("Error in handling connection.");
@@ -280,6 +323,12 @@ public class ISCS {
                 }
             }
         });
+        
+        /*String response = "Not being handled in thread.";
+        exchange.sendResponseHeaders(responseCode, response.getBytes().length);
+        OutputStream os = exchange.getResponseBody();
+        os.write(response.getBytes());
+        os.close();*/
     }
 
     // when a service is started up, it should send one of these requests to the ISCS HTTP server
@@ -288,6 +337,8 @@ public class ISCS {
     // TODO: Make services do this
     public static void addServer(HttpExchange exchange) throws IOException {
         InputStream requestBody = exchange.getRequestBody();
+        int responseCode = 500; //will be overwritten if there is no server error
+        String response = "Unknown error occurred.";
         try (Scanner scanner = new Scanner(requestBody, StandardCharsets.UTF_8)) {
             String body = scanner.useDelimiter("\\A").next();
             Map<String, String> data = JSONParser(body);
@@ -307,10 +358,19 @@ public class ISCS {
                     ISCS.OrderServices.add(service);
                     break;
             }
-            System.out.println("Server added on IP " + data.get("IP") + ", and port " + data.get("port") + ".");
-
+            System.out.println("Added " + type + "service on IP " + data.get("IP") + ", port " + data.get("port") + ".");
+            
+            responseCode = 200;
+            response = "Service connected successfully.";
+            
         } catch (Exception e) {
-            return;
+            responseCode = 500;
+            response = "Exception when connecting to server.";
+        } finally {
+            exchange.sendResponseHeaders(responseCode, response.getBytes().length);
+            OutputStream os = exchange.getResponseBody();
+            os.write(response.getBytes());
+            os.close();
         }
     }
 
@@ -399,6 +459,7 @@ public class ISCS {
     }
 
     public static ServiceInstance getLeastBusyService(List<ServiceInstance> services) {
+        System.out.println("Selecting least busy service...");
         int index = 0;
         int min = -1;
         int connections;

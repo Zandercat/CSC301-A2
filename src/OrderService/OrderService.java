@@ -279,7 +279,7 @@ public class OrderService {
         HttpURLConnection connection = null;
         try {
             // Convert InputStream requestBody to String
-            String body = new Gson().toJson(Map.of("IP", thisIP, "port", thisPort, "type", "user"));
+            String body = new Gson().toJson(Map.of("IP", thisIP, "port", thisPort, "type", "order"));
             System.out.println("Sending POST request to: " + targetUrl + " with body: " + body);
 
             // Create URL and open connection
